@@ -13,6 +13,9 @@ load_dotenv()
 CHROMA_PATH = "chroma"
 DATA_PATH   = "data"
 
+# 🆕 Add or remove years here as needed
+YEAR_FOLDERS = ["monopoly", "ticket_to_ride", "2001", "2002", "2003", "2022"]
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -28,10 +31,38 @@ def main():
 
 
 def load_documents():
-    print(f"📂 Loading PDFs from '{DATA_PATH}/' folder...")
-    docs = PyPDFDirectoryLoader(DATA_PATH).load()
-    print(f"✅ Loaded {len(docs)} page(s).")
-    return docs
+    all_docs = []
+
+    # ── Check if any year subfolders exist ──────────────────────────────
+    year_folders_found = [
+        y for y in YEAR_FOLDERS
+        if os.path.exists(os.path.join(DATA_PATH, y))
+    ]
+
+    if year_folders_found:
+        # ── Mode A: Year subfolders exist → load per year ────────────────
+        print(f"📂 Year folders detected: {year_folders_found}")
+        for year in year_folders_found:
+            folder_path = os.path.join(DATA_PATH, year)
+            print(f"  📁 Loading from '{folder_path}/'...")
+            docs = PyPDFDirectoryLoader(folder_path).load()
+
+            # Stamp every page with its year in metadata
+            for doc in docs:
+                doc.metadata["year"] = year
+
+            print(f"     ✅ {len(docs)} page(s) tagged as year={year}")
+            all_docs.extend(docs)
+
+    else:
+        # ── Mode B: No year subfolders → load flat data/ folder ──────────
+        print(f"📂 No year subfolders found. Loading PDFs from '{DATA_PATH}/' folder...")
+        docs = PyPDFDirectoryLoader(DATA_PATH).load()
+        print(f"✅ Loaded {len(docs)} page(s).")
+        all_docs.extend(docs)
+
+    print(f"\n📊 Total pages loaded: {len(all_docs)}")
+    return all_docs
 
 
 def split_documents(documents: list[Document]):
@@ -46,10 +77,13 @@ def split_documents(documents: list[Document]):
 
 
 def add_to_chroma(chunks: list[Document]):
-    db = Chroma(persist_directory=CHROMA_PATH, embedding_function=get_embedding_function())
+    db = Chroma(
+        persist_directory=CHROMA_PATH,
+        embedding_function=get_embedding_function()
+    )
 
-    chunks_with_ids  = calculate_chunk_ids(chunks)
-    existing_ids     = set(db.get(include=[])["ids"])
+    chunks_with_ids = calculate_chunk_ids(chunks)
+    existing_ids    = set(db.get(include=[])["ids"])
     print(f"📦 Existing documents in DB: {len(existing_ids)}")
 
     new_chunks = [c for c in chunks_with_ids if c.metadata["id"] not in existing_ids]
@@ -67,8 +101,9 @@ def calculate_chunk_ids(chunks):
     current_chunk_index = 0
 
     for chunk in chunks:
-        source         = chunk.metadata.get("source")
-        page           = chunk.metadata.get("page")
+        source          = chunk.metadata.get("source")
+        page            = chunk.metadata.get("page")
+        year            = chunk.metadata.get("year", "unknown")
         current_page_id = f"{source}:{page}"
 
         if current_page_id == last_page_id:
@@ -76,7 +111,7 @@ def calculate_chunk_ids(chunks):
         else:
             current_chunk_index = 0
 
-        chunk.metadata["id"] = f"{current_page_id}:{current_chunk_index}"
+        chunk.metadata["id"] = f"{year}:{source}:{page}:{current_chunk_index}"
         last_page_id = current_page_id
 
     return chunks

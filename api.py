@@ -16,10 +16,14 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from query_data import query_rag
 from populate_database import load_documents, split_documents, add_to_chroma, clear_database
 from langchain_chroma import Chroma
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.documents import Document
+from langchain_groq import ChatGroq
+from langchain_community.retrievers import BM25Retriever
 from get_embedding_function import get_embedding_function
+from classifier import build_classifier, classify_query  # 🆕
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -35,7 +39,20 @@ app.add_middleware(
 )
 
 CHROMA_PATH = "chroma"
-DATA_PATH = "data"
+DATA_PATH   = "data"
+
+PROMPT_TEMPLATE = """
+Answer the question based only on the following context:
+
+{context}
+
+---
+
+Answer the question based on the above context: {question}
+"""
+
+# 🆕 Train classifier once at startup
+classifier_model = build_classifier(model_type="naive_bayes")
 
 
 # ── Schemas ────────────────────────────────────────────────────────────────────
@@ -46,6 +63,8 @@ class QueryRequest(BaseModel):
 class QueryResponse(BaseModel):
     answer: str
     sources: list[str]
+    classification: str        # 🆕 e.g. "BIR Tax Query (Source Year: 2022)"
+    predicted_class: int       # 🆕 e.g. 1
 
 class StatusResponse(BaseModel):
     document_count: int
@@ -80,43 +99,74 @@ def get_status():
 
 @app.post("/query", response_model=QueryResponse)
 def query_endpoint(body: QueryRequest):
-    """Query the RAG pipeline and return an answer with source chunk IDs."""
+    """Query the RAG pipeline and return an answer with classification label."""
     if not body.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
+
     try:
+        # ── Step 1: Classify the query ──────────────────────────────────
+        predicted_class, label, year_filter = classify_query(
+            classifier_model, body.query
+        )
+
+        # ── Step 2: Connect to ChromaDB ─────────────────────────────────
         db = Chroma(
             persist_directory=CHROMA_PATH,
             embedding_function=get_embedding_function(),
         )
-        results = db.similarity_search_with_score(body.query, k=5)
 
-        if not results:
+        # ── Step 3: Semantic search (with optional year filter) ─────────
+        if year_filter:
+            semantic_results = db.similarity_search(
+                body.query,
+                k=5,
+                filter={"year": year_filter}
+            )
+        else:
+            semantic_results = db.similarity_search(body.query, k=5)
+
+        # ── Step 4: BM25 keyword search ─────────────────────────────────
+        all_data = db.get(include=["documents", "metadatas"])
+        all_docs = [
+            Document(page_content=text, metadata=meta)
+            for text, meta in zip(all_data["documents"], all_data["metadatas"])
+        ]
+        bm25_retriever = BM25Retriever.from_documents(all_docs)
+        bm25_retriever.k = 5
+        bm25_results = bm25_retriever.invoke(body.query)
+
+        # ── Step 5: Merge & deduplicate ─────────────────────────────────
+        seen     = set()
+        combined = []
+        for doc in semantic_results + bm25_results:
+            doc_id = doc.metadata.get("id")
+            if doc_id not in seen:
+                seen.add(doc_id)
+                combined.append(doc)
+
+        if not combined:
             return QueryResponse(
                 answer="I couldn't find any relevant information in the knowledge base.",
                 sources=[],
+                classification=label,
+                predicted_class=int(predicted_class),
             )
 
-        from langchain_core.prompts import ChatPromptTemplate
-        from langchain_groq import ChatGroq
-
-        PROMPT_TEMPLATE = """
-Answer the question based only on the following context:
-
-{context}
-
----
-
-Answer the question based on the above context: {question}
-"""
-        context_text = "\n\n---\n\n".join([doc.page_content for doc, _ in results])
+        # ── Step 6: Generate answer ─────────────────────────────────────
+        context_text = "\n\n---\n\n".join([doc.page_content for doc in combined])
         prompt = ChatPromptTemplate.from_template(PROMPT_TEMPLATE).format(
             context=context_text, question=body.query
         )
-        model = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
+        model         = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
         response_text = model.invoke(prompt).content
-        sources = [doc.metadata.get("id", "unknown") for doc, _ in results]
+        sources       = [doc.metadata.get("id", "unknown") for doc in combined]
 
-        return QueryResponse(answer=response_text, sources=sources)
+        return QueryResponse(
+            answer=response_text,
+            sources=sources,
+            classification=label,              # 🆕
+            predicted_class=int(predicted_class),  # 🆕
+        )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -135,7 +185,7 @@ async def upload_pdf(file: UploadFile = File(...)):
         f.write(await file.read())
 
     try:
-        docs = load_documents()
+        docs   = load_documents()
         chunks = split_documents(docs)
         add_to_chroma(chunks)
     except Exception as e:
