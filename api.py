@@ -14,6 +14,7 @@ from typing import Optional
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from populate_database import load_documents, split_documents, add_to_chroma, clear_database
@@ -74,9 +75,13 @@ class StatusResponse(BaseModel):
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 def root():
-    return {"status": "ok", "message": "RAG Chatbot API is running."}
+    """Serve the chatbot UI."""
+    ui_path = Path(__file__).parent / "rag_chatbot_ui.html"
+    if not ui_path.exists():
+        return HTMLResponse("<h2>UI file not found. Place rag_chatbot_ui.html next to api.py</h2>", status_code=404)
+    return HTMLResponse(ui_path.read_text(encoding="utf-8"))
 
 
 @app.get("/status", response_model=StatusResponse)
