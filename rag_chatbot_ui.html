@@ -24,6 +24,33 @@
     --cls-3-bg: rgba(245,166,35,0.10); --cls-3-border: rgba(245,166,35,0.35);  --cls-3-text: #f5a623;
     --cls-4-bg: rgba(200,100,255,0.10); --cls-4-border: rgba(200,100,255,0.35); --cls-4-text: #c864ff;
   }
+  /* ☀️ Light mode overrides */
+  body.light {
+    --bg: #f0f2f5; --surface: #ffffff; --surface2: #e8ebf0;
+    --border: rgba(0,0,0,0.07); --border2: rgba(0,0,0,0.13);
+    --text: #1a1d23; --muted: #6b7280; --accent: #0e9e7e; --accent2: #d97706;
+    --user-bg: #d1faf0; --user-border: rgba(14,158,126,0.25);
+    --bot-bg: #ffffff; --bot-border: rgba(0,0,0,0.08);
+    --input-bg: #f8f9fb;
+    --cls-0-bg: rgba(107,114,128,0.10); --cls-0-border: rgba(107,114,128,0.3);  --cls-0-text: #4b5563;
+    --cls-1-bg: rgba(14,158,126,0.10);  --cls-1-border: rgba(14,158,126,0.35);  --cls-1-text: #0e9e7e;
+    --cls-2-bg: rgba(37,99,235,0.10);   --cls-2-border: rgba(37,99,235,0.35);   --cls-2-text: #2563eb;
+    --cls-3-bg: rgba(217,119,6,0.10);   --cls-3-border: rgba(217,119,6,0.35);   --cls-3-text: #d97706;
+    --cls-4-bg: rgba(147,51,234,0.10);  --cls-4-border: rgba(147,51,234,0.35);  --cls-4-text: #9333ea;
+  }
+  body.light .send-btn svg path { stroke: #ffffff; }
+  body.light .messages::-webkit-scrollbar-thumb { background: #d1d5db; }
+  body.light .toast.err { border-color: rgba(220,38,38,0.4); color: #dc2626; }
+  body.light .toast.ok  { border-color: rgba(14,158,126,0.3); color: var(--accent); }
+  /* Theme toggle button */
+  .theme-btn {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; font-family: var(--font-mono); color: var(--muted);
+    background: var(--surface2); border: 0.5px solid var(--border2);
+    border-radius: 6px; padding: 5px 12px; cursor: pointer;
+    transition: color 0.2s, border-color 0.2s, background 0.2s;
+  }
+  .theme-btn:hover { color: var(--accent); border-color: var(--accent); background: rgba(91,227,193,0.06); }
   body { font-family: var(--font-main); background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
   .header { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; border-bottom: 0.5px solid var(--border2); background: var(--surface); flex-shrink: 0; }
   .header-left { display: flex; align-items: center; gap: 12px; }
@@ -143,7 +170,10 @@
     <span id="status-text">checking...</span>
     <span id="doc-count"></span>
   </div>
-  <button class="clear-btn" onclick="clearChat()">✕ Clear Chat</button>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">☀️ Light</button>
+    <button class="clear-btn" onclick="clearChat()">✕ Clear Chat</button>
+  </div>
 </div>
 <div class="messages" id="messages">
   <div class="welcome" id="welcome">
@@ -331,6 +361,15 @@ function showToast(msg, type = '') {
 }
 function escapeHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('light');
+  $('theme-btn').textContent = isLight ? '🌙 Dark' : '☀️ Light';
+  localStorage.setItem('theme', isLight ? 'light' : 'dark');
+}
+if (localStorage.getItem('theme') === 'light') {
+  document.body.classList.add('light');
+  window.addEventListener('DOMContentLoaded', () => { const b = $('theme-btn'); if (b) b.textContent = '🌙 Dark'; });
 }
 </script>
 </body>
