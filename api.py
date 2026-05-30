@@ -1,6 +1,7 @@
 """
 RAG Chatbot API
 Run with: uvicorn api:app --reload --port 8000
+http://localhost:8000
 
 Requirements:
     pip install fastapi uvicorn python-multipart
