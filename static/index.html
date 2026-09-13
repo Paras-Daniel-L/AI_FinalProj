@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TaxAI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Plus+Jakarta+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo-wrap">
+        <!--<div class="logo-mark">S</div>-->
+        <div>
+          <!-- <div class="logo-text">Tax<span>AI</span></div> -->
+          <div class="logo-tagline">BIR Tax · Board Games · General AI</div>
+        </div>
+      </div>
+      <button class="btn-new-chat" onclick="newChat()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        New Chat
+      </button>
+    </div>
+
+    <div class="sidebar-section-label">Recent Chats</div>
+    <div id="chat-list"></div>
+
+    <div class="kb-section">
+      <div class="kb-header">
+        <span class="kb-title">Knowledge Base</span>
+        <span class="kb-count" id="kb-count">0 chunks</span>
+      </div>
+      <div class="kb-actions">
+        <button class="btn-kb" onclick="document.getElementById('upload-input').click()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          Upload PDF
+        </button>
+        <button class="btn-kb btn-danger" onclick="resetDB()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+          </svg>
+          Reset DB
+        </button>
+      </div>
+      <div class="upload-progress" id="upload-progress">
+        <div class="upload-bar-bg"><div class="upload-bar-fill" id="upload-bar"></div></div>
+        <div class="upload-label" id="upload-label">Indexing…</div>
+      </div>
+      <input type="file" id="upload-input" accept=".pdf" onchange="handleUpload(this)" />
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="status-dot-wrap">
+        <div class="status-dot" id="status-dot"></div>
+        <span class="status-label" id="status-label">Checking…</span>
+      </div>
+      <button class="btn-theme" id="btn-theme" onclick="toggleTheme()" title="Toggle theme">
+        <span id="theme-icon">☀️</span>
+      </button>
+    </div>
+  </aside>
+
+  <div id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+  <!-- ═══ MAIN ═══ -->
+  <main id="main">
+
+    <!-- Topbar -->
+    <header id="topbar">
+      <button id="btn-menu" onclick="toggleSidebar()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+      <span id="chat-title">New Conversation</span>
+      <span class="model-pill">GPT-OSS · 120B</span>
+      <button class="btn-top" onclick="clearChat()">Clear</button>
+    </header>
+
+    <!-- Messages -->
+    <div id="messages-wrap">
+      <div id="messages-inner">
+
+        <!-- Welcome -->
+        <div id="welcome">
+          <!-- <div class="welcome-logo">S</div> -->
+          <div class="welcome-title">Welcome to <span>TaxAI</span></div>
+          <div class="welcome-sub">
+            Your AI assistant for Philippine BIR tax regulations, board games, and everyday questions. Ask anything!
+          </div>
+          <div class="suggestion-grid">
+            <button class="suggestion-chip" onclick="sendSuggestion(this.textContent)">Kamusta! Sino ka at ano ang kaya mong gawin?</button>
+            <button class="suggestion-chip" onclick="sendSuggestion(this.textContent)">What is RDAO No. 1-2022?</button>
+            <button class="suggestion-chip" onclick="sendSuggestion(this.textContent)">Paano mag-compute ng estate tax?</button>
+            <button class="suggestion-chip" onclick="sendSuggestion(this.textContent)">How do I win at Monopoly?</button>
+          </div>
+        </div>
+
+        <!-- Typing indicator (hidden by default) -->
+        <div id="typing-row" style="display:none; align-items:flex-start; gap:10px; padding-left:2px;">
+          <div class="typing-avatar">S</div>
+          <div class="typing-bubble">
+            <div class="typing-dots">
+              <div class="typing-dot"></div>
+              <div class="typing-dot"></div>
+              <div class="typing-dot"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Input area -->
+    <div id="input-area">
+      <div class="input-wrap">
+        <textarea
+          id="user-input"
+          placeholder="Magtanong ka… Ask me anything"
+          rows="1"
+          onkeydown="handleKey(event)"
+          oninput="autoResize(this); updateSendBtn()"
+        ></textarea>
+        <button id="btn-send" onclick="sendMessage()" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
+      <div class="input-hint">TaxAI · Hybrid RAG + Conversational · GPT-OSS 120B via Groq</div>
+    </div>
+
+  </main>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

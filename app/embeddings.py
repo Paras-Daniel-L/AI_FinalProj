@@ -1,8 +1,10 @@
 import os
+
 from dotenv import load_dotenv
 from langchain_community.embeddings import JinaEmbeddings
 
 load_dotenv()
+
 
 def get_embedding_function():
     embeddings = JinaEmbeddings(

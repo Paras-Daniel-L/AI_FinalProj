@@ -6,8 +6,8 @@ from langchain_groq import ChatGroq
 from langchain_community.retrievers import BM25Retriever
 from dotenv import load_dotenv
 
-from get_embedding_function import get_embedding_function
-from classifier import build_classifier, classify_query  # 🆕
+from app.embeddings import get_embedding_function
+from app.classifier import build_classifier, classify_query  # 🆕
 
 load_dotenv()
 
@@ -95,7 +95,7 @@ def query_rag(query_text: str):
         context=context_text, question=query_text
     )
 
-    model = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
+    model = ChatGroq(model="openai/gpt-oss-120b", temperature=0)
     response_text = model.invoke(prompt).content
 
     sources = [doc.metadata.get("id") for doc in combined]

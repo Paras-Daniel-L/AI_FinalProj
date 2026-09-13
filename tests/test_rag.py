@@ -1,4 +1,4 @@
-from query_data import query_rag
+from scripts.query_cli import query_rag
 from langchain_groq import ChatGroq
 
 EVAL_PROMPT = """
@@ -32,7 +32,7 @@ def query_and_validate(question: str, expected_response: str):
         expected_response=expected_response, actual_response=response_text
     )
 
-    model = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
+    model = model = ChatGroq(model="openai/gpt-oss-120b", temperature=0)
     result = model.invoke(prompt)
     result_clean = result.content.strip().lower()
 
