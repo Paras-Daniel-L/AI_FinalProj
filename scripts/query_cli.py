@@ -98,8 +98,8 @@ def query_rag(query_text: str):
     model = ChatGroq(model="openai/gpt-oss-120b", temperature=0)
     response_text = model.invoke(prompt).content
 
-    sources = [doc.metadata.get("id") for doc in combined]
-    print(f"\n✅ Response: {response_text}")
+    sources = [doc.metadata.get("id") for doc in combined]  
+    print(f"\n✅ Response: {response_text}")    
     print(f"📚 Sources: {sources}")
     return response_text
 

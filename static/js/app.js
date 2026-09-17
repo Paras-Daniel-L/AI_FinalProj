@@ -1,198 +1,87 @@
 /* ═══════════════════════════════════════════════
-   State
+   State & Configuration
 ═══════════════════════════════════════════════ */
-let messages = [];        // current chat messages
-let currentChatId = null;
-let savedChats = {};      // { id: { title, ts, messages[] } }
+let messages = [];
 let isLoading = false;
+const API_BASE = ''; // Backend server origin (FastAPI)[cite: 3]
 
-const API_BASE = '';      // same origin (served by FastAPI)
-
-marked.setOptions({ gfm: true, breaks: true });
-
-/* ═══════════════════════════════════════════════
-   Init
-═══════════════════════════════════════════════ */
-window.addEventListener('DOMContentLoaded', () => {
-  loadSavedChats();
-  renderChatList();
-  checkStatus();
-  setInterval(checkStatus, 15000);
-  applyTheme(localStorage.getItem('theme') || 'dark');
-  newChat();
-});
-
-/* ═══════════════════════════════════════════════
-   Theme
-═══════════════════════════════════════════════ */
-function applyTheme(theme) {
-  document.documentElement.setAttribute('data-theme', theme);
-  document.getElementById('theme-icon').textContent = theme === 'dark' ? '☀️' : '🌙';
-  localStorage.setItem('theme', theme);
-}
-function toggleTheme() {
-  const cur = document.documentElement.getAttribute('data-theme');
-  applyTheme(cur === 'dark' ? 'light' : 'dark');
+if (typeof marked !== 'undefined') {
+  marked.setOptions({ gfm: true, breaks: true });
 }
 
 /* ═══════════════════════════════════════════════
-   Sidebar
+   View Transitions
 ═══════════════════════════════════════════════ */
-function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('open');
-  document.getElementById('sidebar-overlay').classList.toggle('visible');
+function switchToChatView() {
+  document.getElementById('landing-view').classList.add('hidden');
+  document.getElementById('chat-view').classList.remove('hidden');
+  document.getElementById('chat-footer').classList.remove('hidden');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
-function closeSidebar() {
-  document.getElementById('sidebar').classList.remove('open');
-  document.getElementById('sidebar-overlay').classList.remove('visible');
+
+function newChat() {
+  if (isLoading) return;
+  
+  // 1. Wipe the backend message history array
+  messages = [];
+  
+  // 2. Clear the UI chat history, but keep the typing indicator
+  const chatHistory = document.getElementById('chat-history');
+  const typingRow = document.getElementById('typing-row');
+  chatHistory.innerHTML = ''; 
+  if (typingRow) chatHistory.appendChild(typingRow);
+  
+  // 3. Reset the view back to the landing page
+  document.getElementById('chat-view').classList.add('hidden');
+  document.getElementById('chat-footer').classList.add('hidden');
+  document.getElementById('landing-view').classList.remove('hidden');
+  
+  // 4. Clear the input fields
+  document.getElementById('landingQueryInput').value = '';
+  document.getElementById('activeChatInput').value = '';
+  
+  // 5. Scroll to top
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 /* ═══════════════════════════════════════════════
    Input handling
 ═══════════════════════════════════════════════ */
-function autoResize(el) {
-  el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 180) + 'px';
-}
-function updateSendBtn() {
-  const val = document.getElementById('user-input').value.trim();
-  const btn = document.getElementById('btn-send');
-  btn.disabled = !val || isLoading;
-  btn.classList.toggle('ready', !!val && !isLoading);
-}
-function handleKey(e) {
+function handleKey(e, context) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
-    if (!isLoading) sendMessage();
+    triggerSearch(context);
   }
 }
-function sendSuggestion(text) {
-  document.getElementById('user-input').value = text;
-  autoResize(document.getElementById('user-input'));
-  updateSendBtn();
-  sendMessage();
-}
 
-/* ═══════════════════════════════════════════════
-   Chat management
-═══════════════════════════════════════════════ */
-function newChat() {
-  if (messages.length > 0) saveCurrentChat();
-  messages = [];
-  currentChatId = 'chat_' + Date.now();
-  document.getElementById('chat-title').textContent = 'New Conversation';
-  clearMessageArea();
-  document.getElementById('welcome').style.display = '';
-  updateSendBtn();
-  closeSidebar();
-  renderChatList();
-}
-
-function clearChat() {
-  if (!confirm('Clear this conversation?')) return;
-  messages = [];
-  clearMessageArea();
-  document.getElementById('welcome').style.display = '';
-  document.getElementById('chat-title').textContent = 'New Conversation';
-}
-
-function clearMessageArea() {
-  // Remove all .msg-row elements
-  const inner = document.getElementById('messages-inner');
-  [...inner.querySelectorAll('.msg-row')].forEach(el => el.remove());
-}
-
-function saveCurrentChat() {
-  if (!messages.length || !currentChatId) return;
-  const firstUserMsg = messages.find(m => m.role === 'user');
-  const title = firstUserMsg
-    ? firstUserMsg.content.substring(0, 42) + (firstUserMsg.content.length > 42 ? '…' : '')
-    : 'Conversation';
-  savedChats[currentChatId] = { title, ts: Date.now(), messages: [...messages] };
-  try { localStorage.setItem('sagot_chats', JSON.stringify(savedChats)); } catch {}
-  renderChatList();
-}
-
-function loadSavedChats() {
-  try {
-    const raw = localStorage.getItem('sagot_chats');
-    if (raw) savedChats = JSON.parse(raw);
-  } catch {}
-}
-
-function loadChat(id) {
-  if (messages.length > 0) saveCurrentChat();
-  const chat = savedChats[id];
-  if (!chat) return;
-  currentChatId = id;
-  messages = [...chat.messages];
-  document.getElementById('chat-title').textContent = chat.title;
-  clearMessageArea();
-  document.getElementById('welcome').style.display = 'none';
-  messages.forEach(m => {
-    if (m.role === 'user') appendUserBubble(m.content, false);
-    else appendBotBubble(m, false);
-  });
-  scrollToBottom();
-  closeSidebar();
-  renderChatList();
-}
-
-function renderChatList() {
-  const list = document.getElementById('chat-list');
-  const sorted = Object.entries(savedChats)
-    .sort(([, a], [, b]) => b.ts - a.ts)
-    .slice(0, 20);
-
-  if (!sorted.length) {
-    list.innerHTML = '<div style="padding:12px 16px; font-size:0.78rem; color:var(--text-faint);">No saved chats yet.</div>';
-    return;
-  }
-
-  list.innerHTML = sorted.map(([id, chat]) => {
-    const ago = timeAgo(chat.ts);
-    const active = id === currentChatId ? 'active' : '';
-    return `
-      <div class="chat-item ${active}" onclick="loadChat('${id}')">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-        </svg>
-        <span class="chat-item-text">${escHtml(chat.title)}</span>
-        <span class="chat-item-time">${ago}</span>
-      </div>`;
-  }).join('');
-}
-
-/* ═══════════════════════════════════════════════
-   Send message
-═══════════════════════════════════════════════ */
-async function sendMessage() {
-  const input = document.getElementById('user-input');
-  const query = input.value.trim();
+function triggerSearch(context) {
+  const inputEl = context === 'landing' ? document.getElementById('landingQueryInput') : document.getElementById('activeChatInput');
+  const query = inputEl.value.trim();
+  
   if (!query || isLoading) return;
+  
+  inputEl.value = '';
+  sendMessage(query);
+}
 
-  // Hide welcome
-  document.getElementById('welcome').style.display = 'none';
+function sendSuggestion(text) {
+  sendMessage(text);
+}
 
-  // Add user message to state + DOM
+/* ═══════════════════════════════════════════════
+   Core Send & Receive Logic
+═══════════════════════════════════════════════ */
+async function sendMessage(query) {
+  if (isLoading) return;
+
+  switchToChatView();
+
+  // Push to local history and UI[cite: 3]
   messages.push({ role: 'user', content: query });
-  appendUserBubble(query, true);
-
-  // Reset input
-  input.value = '';
-  input.style.height = 'auto';
-  updateSendBtn();
-
-  // Update chat title
-  if (messages.filter(m => m.role === 'user').length === 1) {
-    const title = query.substring(0, 42) + (query.length > 42 ? '…' : '');
-    document.getElementById('chat-title').textContent = title;
-  }
-
-  // Show typing
+  appendUserBubble(query);
   setLoading(true);
 
-  // Build history (exclude the current user message we just added)
+  // Extract history for context
   const history = messages.slice(0, -1).map(m => ({ role: m.role, content: m.content }));
 
   try {
@@ -217,228 +106,138 @@ async function sendMessage() {
       sources: data.sources || [],
     };
     messages.push(botMsg);
-    appendBotBubble(botMsg, true);
-    saveCurrentChat();
+    appendBotBubble(botMsg);
 
   } catch (err) {
     const errMsg = {
       role: 'assistant',
-      content: `**Error:** ${err.message}\n\nPlease check that the API server is running and try again.`,
+      content: `**Error:** ${err.message}\n\nPlease check your connection or backend server.`,
       classification: 'Error',
       predicted_class: -1,
       mode: 'error',
       sources: [],
     };
     messages.push(errMsg);
-    appendBotBubble(errMsg, true);
+    appendBotBubble(errMsg);
   }
 
   setLoading(false);
 }
 
 /* ═══════════════════════════════════════════════
-   DOM — Bubble helpers
+   DOM - Bubble Rendering
 ═══════════════════════════════════════════════ */
-function appendUserBubble(text, animate) {
+function appendUserBubble(text) {
   const row = document.createElement('div');
-  row.className = 'msg-row user';
+  row.className = 'flex flex-col items-end gap-space-xs self-end max-w-2xl w-full';
+  
+  // Basic html escaping
+  const escapedText = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+
   row.innerHTML = `
-    <div class="msg-header">
-      <div class="msg-avatar user-av">U</div>
-      <span class="msg-role">You</span>
-      <span class="msg-time">${timeAgo(Date.now())}</span>
+    <div class="flex items-center gap-space-sm pr-space-xs">
+      <span class="font-code-citation text-code-citation text-on-surface-variant">Just now • You</span>
+      <div class="w-8 h-8 rounded-lg bg-primary-container flex items-center justify-center shadow-sm">
+        <span class="font-label-md text-label-md text-on-primary font-bold">U</span>
+      </div>
     </div>
-    <div class="msg-bubble">${escHtml(text).replace(/\n/g, '<br>')}</div>
+    <div class="bg-primary-container text-on-primary px-space-lg py-space-md rounded-2xl rounded-tr-none shadow-md w-fit text-right">
+      <p class="font-body-md text-body-md text-on-primary text-left">
+        ${escapedText}
+      </p>
+    </div>
   `;
   insertBeforeTyping(row);
-  if (animate) scrollToBottom();
+  scrollToBottom();
 }
 
-function appendBotBubble(msg, animate) {
+function appendBotBubble(msg) {
   const row = document.createElement('div');
-  row.className = 'msg-row bot';
+  row.className = 'flex flex-col items-start gap-space-xs self-start max-w-3xl w-full';
 
-  // Classification badge class
-  let classKey = 'chitchat';
-  const pc = msg.predicted_class;
-  if (pc === 1) classKey = 'tax-2001';
-  else if (pc === 2) classKey = 'tax-2002';
-  else if (pc === 3) classKey = 'tax-2003';
-  else if (pc === 4) classKey = 'tax-2022';
-  else if (pc === 5) classKey = 'general-tax';
-  else if (pc === 6) classKey = 'board-games';
+  // Format mode label (RAG vs Conv vs Error)[cite: 3]
+  const modeLabel = msg.mode === 'rag' ? 'Verified RAG Synthesis' : msg.mode === 'error' ? 'Error' : 'Conversational';
+  const parsedContent = typeof marked !== 'undefined' ? marked.parse(msg.content || '') : msg.content;
 
-  const modeLabel = msg.mode === 'rag' ? '📚 RAG' : msg.mode === 'error' ? '⚠️ Error' : '💬 AI';
-  const modeBadgeClass = msg.mode === 'rag' ? 'badge-mode-rag' : msg.mode === 'error' ? '' : 'badge-mode-conv';
-
-  // Sources HTML
+  // Build the sources accordion if sources exist
   let sourcesHtml = '';
-  if (msg.sources && msg.sources.length) {
-    const chips = msg.sources.map(s => `<span class="source-chip">${escHtml(s)}</span>`).join('');
+  if (msg.sources && msg.sources.length > 0) {
+    const sourceItems = msg.sources.map(s => `
+      <div class="flex items-center gap-2 bg-surface-container-lowest/60 hover:bg-surface-container-lowest transition-colors px-3 py-1.5 rounded-lg">
+        <span class="font-label-sm text-label-sm bg-primary text-on-primary px-1.5 py-0.5 rounded">Source</span>
+        <span class="font-body-sm text-body-sm text-on-secondary-fixed font-medium break-all">${String(s).replace(/</g, '&lt;')}</span>
+      </div>
+    `).join('');
+
     sourcesHtml = `
-      <button class="sources-toggle" onclick="toggleSources(this)">
-        <svg class="chevron" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-        ${msg.sources.length} source${msg.sources.length > 1 ? 's' : ''}
-      </button>
-      <div class="sources-list">${chips}</div>
+      <div class="w-full h-px bg-on-secondary-fixed/90 my-space-xs"></div>
+      <div class="flex flex-col gap-space-xs">
+        <button class="flex items-center justify-between w-full text-left font-label-md text-label-md text-on-secondary-fixed hover:opacity-80 transition-opacity" type="button" onclick="const content = this.nextElementSibling; const chevron = this.querySelector('.chevron'); content.classList.toggle('hidden'); chevron.style.transform = content.classList.contains('hidden') ? 'rotate(-90deg)' : 'rotate(0deg)';">
+          <span class="flex items-center gap-1 font-bold">
+            <span class="chevron text-[10px] inline-block transition-transform duration-200" style="transform: rotate(-90deg);">▼</span> ${msg.sources.length} sources
+          </span>
+          <span class="font-code-citation text-code-citation text-on-secondary-fixed/70">Click to expand index</span>
+        </button>
+        <div class="flex flex-col gap-2 pt-space-xs hidden">
+          ${sourceItems}
+        </div>
+      </div>
     `;
   }
 
-  const parsed = marked.parse(msg.content || '');
-
   row.innerHTML = `
-    <div class="msg-header">
-      <div class="msg-avatar bot-av">S</div>
-      <span class="msg-role">TaxAI</span>
-      <span class="msg-time">${timeAgo(Date.now())}</span>
+    <div class="flex items-center gap-space-sm pl-space-xs">
+      <div class="w-8 h-8 rounded-lg bg-secondary-container flex items-center justify-center shadow-sm">
+        <span class="font-label-md text-label-md text-on-secondary-fixed font-bold">T</span>
+      </div>
+      <span class="font-code-citation text-code-citation text-on-surface">TaxSight PH • Just Now</span>
+      <span class="font-label-sm text-label-sm bg-surface-container px-2 py-0.5 rounded-full text-secondary">${modeLabel}</span>
     </div>
-    <div class="msg-bubble">
-      ${parsed}
-      <div class="msg-meta">
-        <span class="badge badge-class ${classKey}">${escHtml(msg.classification || 'Unknown')}</span>
-        <span class="badge ${modeBadgeClass}">${modeLabel}</span>
+    
+    <div class="bg-secondary-fixed text-on-secondary-fixed px-space-xl py-space-lg rounded-2xl rounded-tl-none shadow-md w-full flex flex-col gap-space-md">
+      <div class="bot-bubble-content font-body-md text-body-md text-on-secondary-fixed">
+        ${parsedContent}
       </div>
       ${sourcesHtml}
     </div>
+    
+    <div class="flex items-center gap-space-xs mt-space-2xs pl-space-xs">
+      <span class="font-label-sm text-label-sm px-space-md py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed font-medium shadow-sm">
+        ${msg.mode === 'rag' ? 'RAG Processed' : 'Direct LLM'}
+      </span>
+      <span class="font-label-sm text-label-sm px-space-md py-1 rounded-full bg-secondary-container text-on-secondary-fixed font-medium shadow-sm">
+        ${msg.classification || 'General Context'}
+      </span>
+    </div>
   `;
 
-  // Add copy buttons to code blocks
-  row.querySelectorAll('pre').forEach(pre => {
-    const btn = document.createElement('button');
-    btn.className = 'copy-code-btn';
-    btn.textContent = 'copy';
-    btn.onclick = () => {
-      navigator.clipboard.writeText(pre.querySelector('code')?.textContent || pre.textContent);
-      btn.textContent = 'copied!';
-      setTimeout(() => { btn.textContent = 'copy'; }, 1800);
-    };
-    pre.style.position = 'relative';
-    pre.appendChild(btn);
-  });
-
   insertBeforeTyping(row);
-  if (animate) scrollToBottom();
+  scrollToBottom();
 }
 
 function insertBeforeTyping(el) {
-  const inner = document.getElementById('messages-inner');
+  const inner = document.getElementById('chat-history');
   const typingRow = document.getElementById('typing-row');
   inner.insertBefore(el, typingRow);
-}
-
-function toggleSources(btn) {
-  btn.classList.toggle('open');
-  btn.nextElementSibling.classList.toggle('visible');
-}
-
-/* ═══════════════════════════════════════════════
-   Loading state
-═══════════════════════════════════════════════ */
-function setLoading(state) {
-  isLoading = state;
-  const typingRow = document.getElementById('typing-row');
-  typingRow.style.display = state ? 'flex' : 'none';
-  updateSendBtn();
-  if (state) scrollToBottom();
-}
-
-function scrollToBottom() {
-  const wrap = document.getElementById('messages-wrap');
-  setTimeout(() => { wrap.scrollTop = wrap.scrollHeight; }, 30);
-}
-
-/* ═══════════════════════════════════════════════
-   Upload
-═══════════════════════════════════════════════ */
-async function handleUpload(input) {
-  const file = input.files[0];
-  if (!file) return;
-  if (!file.name.endsWith('.pdf')) { alert('Only PDF files are accepted.'); return; }
-
-  const progress = document.getElementById('upload-progress');
-  const bar = document.getElementById('upload-bar');
-  const label = document.getElementById('upload-label');
-
-  progress.style.display = 'block';
-  bar.style.width = '20%';
-  label.textContent = `Uploading ${file.name}…`;
-
-  const fd = new FormData();
-  fd.append('file', file);
-
-  try {
-    bar.style.width = '60%';
-    const res = await fetch(`${API_BASE}/upload`, { method: 'POST', body: fd });
-    bar.style.width = '100%';
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      label.textContent = `❌ ${err.detail || 'Upload failed'}`;
-    } else {
-      const data = await res.json();
-      label.textContent = `✅ ${data.message}`;
-      checkStatus();
-    }
-  } catch (e) {
-    label.textContent = `❌ Network error`;
-  }
-
-  input.value = '';
-  setTimeout(() => { progress.style.display = 'none'; bar.style.width = '0%'; }, 3000);
-}
-
-/* ═══════════════════════════════════════════════
-   Reset DB
-═══════════════════════════════════════════════ */
-async function resetDB() {
-  if (!confirm('This will permanently delete all indexed documents. Continue?')) return;
-  try {
-    const res = await fetch(`${API_BASE}/reset`, { method: 'DELETE' });
-    const data = await res.json();
-    alert(data.message);
-    checkStatus();
-  } catch (e) {
-    alert('Reset failed: ' + e.message);
-  }
-}
-
-/* ═══════════════════════════════════════════════
-   Status
-═══════════════════════════════════════════════ */
-async function checkStatus() {
-  const dot   = document.getElementById('status-dot');
-  const label = document.getElementById('status-label');
-  const count = document.getElementById('kb-count');
-
-  try {
-    const res = await fetch(`${API_BASE}/status`);
-    if (!res.ok) throw new Error();
-    const data = await res.json();
-    dot.className = 'status-dot online';
-    label.textContent = 'Online';
-    count.textContent = `${data.document_count.toLocaleString()} chunks`;
-  } catch {
-    dot.className = 'status-dot offline';
-    label.textContent = 'Offline';
-    count.textContent = '—';
-  }
 }
 
 /* ═══════════════════════════════════════════════
    Utilities
 ═══════════════════════════════════════════════ */
-function timeAgo(ts) {
-  const diff = Math.floor((Date.now() - ts) / 1000);
-  if (diff < 60)   return 'just now';
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400)return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+function setLoading(state) {
+  isLoading = state;
+  const typingRow = document.getElementById('typing-row');
+  if (state) {
+    typingRow.classList.remove('hidden');
+    typingRow.classList.add('flex');
+  } else {
+    typingRow.classList.add('hidden');
+    typingRow.classList.remove('flex');
+  }
+  
+  if (state) scrollToBottom();
 }
 
-function escHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+function scrollToBottom() {
+  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
 }

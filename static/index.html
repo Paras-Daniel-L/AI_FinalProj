@@ -1,150 +1,292 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>TaxAI</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Plus+Jakarta+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<link rel="stylesheet" href="/static/css/style.css" />
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>TaxSight PH</title>
+  
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet"/>
+  
+  <!-- Markdown Parser & Custom Styles -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            // Neutral/Cool Slate Surfaces replacing warm creams
+            "surface": "#f8fafc",
+            "background": "#f8fafc",
+            "surface-bright": "#ffffff",
+            "surface-container-lowest": "#ffffff",
+            "surface-container-low": "#f1f5f9",
+            "surface-container": "#e2e8f0",
+            "surface-container-high": "#cbd5e1",
+            "surface-container-highest": "#94a3b8",
+            "surface-variant": "#e2e8f0",
+            "surface-dim": "#e2e8f0",
+            
+            // Text & Outline colors switched to crisp slates
+            "on-surface": "#0f172a",
+            "on-surface-variant": "#475569",
+            "on-background": "#0f172a",
+            "outline": "#94a3b8",
+            "outline-variant": "#cbd5e1",
+            "inverse-surface": "#1e293b",
+            "inverse-on-surface": "#f1f5f9",
+
+            // Secondary colors (Bot Bubbles, Buttons) replacing Yellows with Clean Whites/Slates
+            "secondary": "#64748b",
+            "secondary-container": "#e2e8f0",
+            "on-secondary-container": "#0f172a",
+            "secondary-fixed": "#ffffff",          // Makes the bot chat bubble crisp white
+            "on-secondary-fixed": "#0f172a",       // Dark text for the bot bubble
+            "secondary-fixed-dim": "#cbd5e1",
+            "on-secondary-fixed-variant": "#334155",
+            "on-secondary": "#ffffff",
+
+            // Primary Blue colors for accents (User bubbles, main buttons)
+            "primary": "#2563eb",
+            "primary-container": "#2563eb",
+            "on-primary-container": "#ffffff",
+            "primary-fixed": "#dbeafe",
+            "on-primary-fixed": "#001453",
+            "primary-fixed-dim": "#b8c4ff",
+            "on-primary-fixed-variant": "#1d4ed8",
+            "inverse-primary": "#bfdbfe",
+            "on-primary": "#ffffff",
+            "surface-tint": "#2563eb",
+
+            // Tertiary colors
+            "tertiary": "#1d4ed8",
+            "tertiary-container": "#00489e",
+            "on-tertiary-container": "#dbeafe",
+            "tertiary-fixed": "#dbeafe",
+            "on-tertiary-fixed": "#001a42",
+            "tertiary-fixed-dim": "#adc6ff",
+            "on-tertiary-fixed-variant": "#004395",
+            "on-tertiary": "#ffffff",
+
+            // Error colors
+            "error": "#ef4444",
+            "error-container": "#fee2e2",
+            "on-error-container": "#7f1d1d",
+            "on-error": "#ffffff"
+          },
+          borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" },
+          spacing: { "space-sm": "0.5rem", "space-lg": "1.5rem", "gutter": "1.25rem", "space-2xl": "3rem", "margin": "1rem", "margin-desktop": "3rem", "space-md": "1rem", "space-xl": "2rem", "space-xs": "0.25rem", "space-2xs": "0.125rem", "gutter-desktop": "1.5rem", "margin-tablet": "2rem" },
+          fontFamily: { "display-lg": ["Inter"], "headline-lg": ["Inter"], "code-citation": ["Inter"], "body-md": ["Inter"], "body-sm": ["Inter"], "headline-md": ["Inter"], "headline-sm": ["Inter"], "label-md": ["Inter"], "label-sm": ["Inter"], "body-lg": ["Inter"], "display-lg-mobile": ["Inter"] },
+          fontSize: { "display-lg": ["40px", { lineHeight: "48px", letterSpacing: "-0.02em", fontWeight: "700" }], "headline-lg": ["28px", { lineHeight: "36px", letterSpacing: "-0.015em", fontWeight: "600" }], "code-citation": ["12px", { lineHeight: "16px", fontWeight: "500" }], "body-md": ["14px", { lineHeight: "22px", fontWeight: "400" }], "body-sm": ["13px", { lineHeight: "18px", fontWeight: "400" }], "headline-md": ["22px", { lineHeight: "30px", letterSpacing: "-0.01em", fontWeight: "600" }], "headline-sm": ["18px", { lineHeight: "26px", letterSpacing: "-0.005em", fontWeight: "600" }], "label-md": ["12px", { lineHeight: "16px", letterSpacing: "0.02em", fontWeight: "600" }], "label-sm": ["11px", { lineHeight: "14px", letterSpacing: "0.04em", fontWeight: "600" }], "body-lg": ["16px", { lineHeight: "26px", fontWeight: "400" }], "display-lg-mobile": ["30px", { lineHeight: "38px", letterSpacing: "-0.015em", fontWeight: "700" }] }
+        }
+      }
+    };
+  </script>
 </head>
-<body>
+<body class="bg-surface font-body-md text-body-md text-on-surface antialiased min-h-screen relative">
 
-<div id="app">
-
-  <!-- ═══ SIDEBAR ═══ -->
-  <aside id="sidebar">
-    <div class="sidebar-header">
-      <div class="logo-wrap">
-        <!--<div class="logo-mark">S</div>-->
-        <div>
-          <!-- <div class="logo-text">Tax<span>AI</span></div> -->
-          <div class="logo-tagline">BIR Tax · Board Games · General AI</div>
-        </div>
-      </div>
-      <button class="btn-new-chat" onclick="newChat()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-        </svg>
-        New Chat
-      </button>
+  <!-- Global Header (Full Width) -->
+  <header class="fixed top-0 left-0 right-0 h-16 bg-surface/90 backdrop-blur-xl z-50 shadow-[0_1px_8px_rgba(0,0,0,0.04)] px-gutter-desktop">
+  <div class="h-16 w-full flex items-center justify-between">
+    <div class="flex items-center gap-space-md cursor-pointer" onclick="newChat()">
+      <span class="font-headline-md text-headline-md text-primary tracking-tight font-bold">TaxSight PH</span>
+      <span class="hidden md:inline-flex items-center px-space-sm py-space-2xs bg-surface-container-high text-on-surface-variant rounded-full font-code-citation text-code-citation">GPT-OSS · 120B</span>
     </div>
-
-    <div class="sidebar-section-label">Recent Chats</div>
-    <div id="chat-list"></div>
-
-    <div class="kb-section">
-      <div class="kb-header">
-        <span class="kb-title">Knowledge Base</span>
-        <span class="kb-count" id="kb-count">0 chunks</span>
-      </div>
-      <div class="kb-actions">
-        <button class="btn-kb" onclick="document.getElementById('upload-input').click()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-          Upload PDF
-        </button>
-        <button class="btn-kb btn-danger" onclick="resetDB()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-          </svg>
-          Reset DB
-        </button>
-      </div>
-      <div class="upload-progress" id="upload-progress">
-        <div class="upload-bar-bg"><div class="upload-bar-fill" id="upload-bar"></div></div>
-        <div class="upload-label" id="upload-label">Indexing…</div>
-      </div>
-      <input type="file" id="upload-input" accept=".pdf" onchange="handleUpload(this)" />
-    </div>
-
-    <div class="sidebar-footer">
-      <div class="status-dot-wrap">
-        <div class="status-dot" id="status-dot"></div>
-        <span class="status-label" id="status-label">Checking…</span>
-      </div>
-      <button class="btn-theme" id="btn-theme" onclick="toggleTheme()" title="Toggle theme">
-        <span id="theme-icon">☀️</span>
+    <div class="flex items-center gap-space-sm">
+      <button class="inline-flex items-center gap-space-xs px-space-md py-space-xs rounded-full bg-surface-container-lowest text-primary hover:bg-surface-container-high transition-colors font-label-md text-label-md" type="button" onclick="newChat()">
+        <span class="material-symbols-outlined text-[16px]">restart_alt</span>
+        <span>Clear</span>
       </button>
+      <!-- The Facts button has been removed from here -->
+      <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-xs">
+        <span class="material-symbols-outlined text-on-primary text-[18px]">person</span>
+      </div>
     </div>
-  </aside>
+  </div>
+</header>
 
-  <div id="sidebar-overlay" onclick="closeSidebar()"></div>
-
-  <!-- ═══ MAIN ═══ -->
-  <main id="main">
-
-    <!-- Topbar -->
-    <header id="topbar">
-      <button id="btn-menu" onclick="toggleSidebar()">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
-        </svg>
-      </button>
-      <span id="chat-title">New Conversation</span>
-      <span class="model-pill">GPT-OSS · 120B</span>
-      <button class="btn-top" onclick="clearChat()">Clear</button>
-    </header>
-
-    <!-- Messages -->
-    <div id="messages-wrap">
-      <div id="messages-inner">
-
-        <!-- Welcome -->
-        <div id="welcome">
-          <!-- <div class="welcome-logo">S</div> -->
-          <div class="welcome-title">Welcome to <span>TaxAI</span></div>
-          <div class="welcome-sub">
-            Your AI assistant for Philippine BIR tax regulations, board games, and everyday questions. Ask anything!
+  <!-- Main Content Wrapper -->
+  <main class="w-full pt-16 bg-surface min-h-[calc(100vh-64px)] pb-space-2xl">
+    
+    <!-- ========================================== -->
+    <!-- VIEW 1: LANDING PAGE -->
+    <!-- ========================================== -->
+    <div id="landing-view" class="flex flex-col w-full max-w-6xl mx-auto px-gutter-desktop py-space-lg transition-opacity duration-300">
+      <div class="relative w-full flex flex-col items-center">
+        <div class="absolute -top-12 w-96 h-96 rounded-full bg-primary/5 blur-3xl pointer-events-none -z-10"></div>
+        <div class="absolute top-24 right-1/4 w-72 h-72 rounded-full bg-secondary-container/20 blur-3xl pointer-events-none -z-10"></div>
+        
+        <!-- Central Hero Visual -->
+        <div class="mt-space-md mb-space-md flex flex-col items-center justify-center">
+          <div class="relative w-40 h-36 flex items-center justify-center">
+            <svg class="w-full h-full drop-shadow-xl" fill="none" viewbox="0 0 160 144" xmlns="http://www.w3.org/2000/svg">
+              <ellipse class="text-on-surface/5" cx="80" cy="126" fill="currentColor" rx="56" ry="12"></ellipse>
+              <g class="transition-transform duration-500 hover:translate-y-1">
+                <path class="text-surface-container-high" d="M26 94L80 114L134 94L80 75L26 94Z" fill="currentColor"></path>
+                <path class="text-surface-container-highest" d="M26 94L80 114V119L26 99V94Z" fill="currentColor"></path>
+                <path class="text-outline-variant/60" d="M134 94L80 114V119L134 99V94Z" fill="currentColor"></path>
+                <path class="text-primary/20" d="M46 95L80 107L114 95" stroke="currentColor" stroke-linecap="round" stroke-width="1.5"></path>
+              </g>
+              <g class="transition-transform duration-500 hover:-translate-y-0.5">
+                <path class="text-surface-container-low" d="M30 74L80 93L130 74L80 56L30 74Z" fill="currentColor"></path>
+                <path class="text-surface-container" d="M30 74L80 93V97L30 78V74Z" fill="currentColor"></path>
+                <path class="text-outline-variant/40" d="M130 74L80 93V97L130 78V74Z" fill="currentColor"></path>
+                <circle class="text-secondary-container" cx="80" cy="74" fill="currentColor" r="5"></circle>
+                <path class="text-primary/30" d="M48 74L80 86L112 74" stroke="currentColor" stroke-linecap="round" stroke-width="1.5"></path>
+              </g>
+              <g class="transition-transform duration-500 hover:-translate-y-1">
+                <path class="text-surface-container-lowest" d="M34 54L80 72L126 54L80 37L34 54Z" fill="currentColor"></path>
+                <path class="text-surface-container-high" d="M34 54L80 72V76L34 58V54Z" fill="currentColor"></path>
+                <path class="text-surface-variant" d="M126 54L80 72V76L126 58V54Z" fill="currentColor"></path>
+                <line class="text-primary" stroke="currentColor" stroke-linecap="round" stroke-width="1.5" x1="56" x2="72" y1="52" y2="58"></line>
+                <line class="text-primary" stroke="currentColor" stroke-linecap="round" stroke-width="1.5" x1="88" x2="104" y1="58" y2="52"></line>
+              </g>
+              <g class="transform -rotate-12 translate-x-3 -translate-y-1 drop-shadow-2xl">
+                <path class="text-primary" d="M106 78L132 108" stroke="currentColor" stroke-linecap="round" stroke-width="6"></path>
+                <path class="text-secondary-container" d="M106 78L132 108" stroke="currentColor" stroke-linecap="round" stroke-width="2"></path>
+                <circle class="text-primary-fixed/20" cx="82" cy="50" fill="currentColor" r="26"></circle>
+                <circle class="text-primary-container" cx="82" cy="50" r="25" stroke="currentColor" stroke-width="3.5"></circle>
+                <path class="text-surface-container-lowest" d="M68 38C74 31 88 31 96 37" opacity="0.9" stroke="currentColor" stroke-linecap="round" stroke-width="2"></path>
+                <circle class="text-surface-container-lowest/30" cx="82" cy="50" fill="currentColor" r="21"></circle>
+                <circle class="text-secondary" cx="82" cy="50" fill="currentColor" r="3"></circle>
+              </g>
+            </svg>
           </div>
-          <div class="suggestion-grid">
-            <button class="suggestion-chip" onclick="sendSuggestion(this.textContent)">Kamusta! Sino ka at ano ang kaya mong gawin?</button>
-            <button class="suggestion-chip" onclick="sendSuggestion(this.textContent)">What is RDAO No. 1-2022?</button>
-            <button class="suggestion-chip" onclick="sendSuggestion(this.textContent)">Paano mag-compute ng estate tax?</button>
-            <button class="suggestion-chip" onclick="sendSuggestion(this.textContent)">How do I win at Monopoly?</button>
-          </div>
+          
+          <h1 class="font-display-lg text-display-lg text-on-surface text-center tracking-tight mt-space-sm">
+            What do you want to search?
+          </h1>
+          <p class="font-body-lg text-body-lg text-on-surface-variant text-center max-w-xl mt-space-xs">
+            Search Philippine tax codes, BIR revenue regulations, tax brackets, and official rulings.
+          </p>
         </div>
 
-        <!-- Typing indicator (hidden by default) -->
-        <div id="typing-row" style="display:none; align-items:flex-start; gap:10px; padding-left:2px;">
-          <div class="typing-avatar">S</div>
-          <div class="typing-bubble">
-            <div class="typing-dots">
-              <div class="typing-dot"></div>
-              <div class="typing-dot"></div>
-              <div class="typing-dot"></div>
+        <!-- Central Search Omnibar -->
+        <div class="w-full max-w-3xl mt-space-sm">
+          <div class="relative flex items-center bg-surface-container-lowest rounded-full shadow-lg transition-all duration-200 focus-within:shadow-xl focus-within:ring-2 focus-within:ring-primary/20 px-space-md py-space-xs">
+            <input class="w-full bg-transparent px-space-sm py-space-sm text-on-surface placeholder:text-outline font-body-md text-body-md focus:outline-none" id="landingQueryInput" placeholder="I-type ang iyong BIR tax question dito... (hal., 'Ano ang rules sa pag-file ng ITR?')" type="text" onkeydown="handleKey(event, 'landing')"/>
+            <div class="flex items-center gap-space-xs mr-space-2xs">
+              <button class="w-10 h-10 rounded-full bg-primary text-on-primary hover:bg-primary-container shadow-md flex items-center justify-center transition-transform active:scale-95 ml-space-2xs" onclick="triggerSearch('landing')" type="button">
+                <span class="material-symbols-outlined text-[20px]">arrow_forward</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Rapid Query Starters -->
+          <div class="flex flex-wrap items-center justify-center gap-space-xs mt-space-md">
+            <span class="font-label-sm text-label-sm text-on-surface-variant mr-space-2xs flex items-center gap-space-2xs">
+              <span class="material-symbols-outlined text-[16px] text-secondary">bolt</span> Suggestions:
+            </span>
+            <button class="inline-flex items-center gap-space-2xs px-space-md py-space-2xs bg-surface-container-lowest hover:bg-surface-container hover:text-primary text-on-surface-variant rounded-full font-label-md text-label-md shadow-sm transition-colors" onclick="sendSuggestion('Annual ITR Deadline 2024 for self-employed');" type="button">
+              <span>Annual ITR Deadline 2024</span><span class="material-symbols-outlined text-[14px] text-outline">north_east</span>
+            </button>
+            <button class="inline-flex items-center gap-space-2xs px-space-md py-space-2xs bg-surface-container-lowest hover:bg-surface-container hover:text-primary text-on-surface-variant rounded-full font-label-md text-label-md shadow-sm transition-colors" onclick="sendSuggestion('TRAIN Law Tax Table individual graduated rates');" type="button">
+              <span>TRAIN Law Tax Table</span><span class="material-symbols-outlined text-[14px] text-outline">north_east</span>
+            </button>
+            <button class="inline-flex items-center gap-space-2xs px-space-md py-space-2xs bg-surface-container-lowest hover:bg-surface-container hover:text-primary text-on-surface-variant rounded-full font-label-md text-label-md shadow-sm transition-colors" onclick="sendSuggestion('Expanded Withholding Tax (EWT) rates on professional fees');" type="button">
+              <span>Withholding Tax Rates</span><span class="material-symbols-outlined text-[14px] text-outline">north_east</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- HCI Clarity Architecture -->
+        <div class="w-full max-w-5xl mt-space-xl grid grid-cols-1 md:grid-cols-3 gap-gutter-desktop">
+          <div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between mb-space-md">
+                <div class="w-10 h-10 rounded-lg bg-primary-fixed text-primary flex items-center justify-center"><span class="material-symbols-outlined text-[22px]">source_notes</span></div>
+                <span class="font-label-sm text-label-sm px-space-xs py-space-2xs bg-surface-container-high rounded text-on-surface-variant">RAG Pipeline</span>
+              </div>
+              <h3 class="font-headline-sm text-headline-sm text-on-surface mb-space-xs">RAG & Document Retrieval</h3>
+              <p class="font-body-sm text-body-sm text-on-surface-variant mb-space-md">Directly linked to authoritative Philippine fiscal documentation.</p>
+              <ul class="flex flex-col gap-space-sm font-body-sm text-body-sm text-on-surface">
+                <li class="flex items-start gap-space-xs"><span class="material-symbols-outlined text-primary text-[18px] shrink-0 mt-0.5">check_circle</span><span>Indexed PDFs from official BIR Rulings and Revenue Memorandum Orders.</span></li>
+              </ul>
+            </div>
+          </div>
+          <div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between mb-space-md">
+                <div class="w-10 h-10 rounded-lg bg-secondary-fixed text-on-secondary-fixed flex items-center justify-center"><span class="material-symbols-outlined text-[22px]">translate</span></div>
+                <span class="font-label-sm text-label-sm px-space-xs py-space-2xs bg-surface-container-high rounded text-on-surface-variant">Bilingual AI</span>
+              </div>
+              <h3 class="font-headline-sm text-headline-sm text-on-surface mb-space-xs">Taglish & Scope</h3>
+              <p class="font-body-sm text-body-sm text-on-surface-variant mb-space-md">Conversational natural language optimized for Filipino accountants and business owners.</p>
+              <ul class="flex flex-col gap-space-sm font-body-sm text-body-sm text-on-surface">
+                <li class="flex items-start gap-space-xs"><span class="material-symbols-outlined text-secondary text-[18px] shrink-0 mt-0.5">chat_bubble</span><span>Naturally switches between English, Filipino, and Taglish tax inquiries.</span></li>
+              </ul>
+            </div>
+          </div>
+          <div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between mb-space-md">
+                <div class="w-10 h-10 rounded-lg bg-tertiary-fixed text-tertiary flex items-center justify-center"><span class="material-symbols-outlined text-[22px]">policy</span></div>
+                <span class="font-label-sm text-label-sm px-space-xs py-space-2xs bg-surface-container-high rounded text-on-surface-variant">Compliance Bound</span>
+              </div>
+              <h3 class="font-headline-sm text-headline-sm text-on-surface mb-space-xs">Accuracy & Limitations</h3>
+              <p class="font-body-sm text-body-sm text-on-surface-variant mb-space-md">Principled design ensuring transparent refusal when sources do not corroborate.</p>
+              <ul class="flex flex-col gap-space-sm font-body-sm text-body-sm text-on-surface">
+                <li class="flex items-start gap-space-xs"><span class="material-symbols-outlined text-tertiary text-[18px] shrink-0 mt-0.5">verified_user</span><span>Mitigates hallucinations by strictly grounding replies in codified text data.</span></li>
+              </ul>
             </div>
           </div>
         </div>
-
+        
+        <footer class="mt-space-2xl text-center flex flex-col items-center gap-space-xs">
+          <div class="flex flex-wrap items-center justify-center gap-space-md font-code-citation text-code-citation text-on-surface-variant">
+            <span>TaxSight PH</span><span>•</span><span>Hybrid RAG + Conversational</span><span>•</span><span>GPT-OSS 120B via Groq Inference</span>
+          </div>
+        </footer>
       </div>
     </div>
 
-    <!-- Input area -->
-    <div id="input-area">
-      <div class="input-wrap">
-        <textarea
-          id="user-input"
-          placeholder="Magtanong ka… Ask me anything"
-          rows="1"
-          onkeydown="handleKey(event)"
-          oninput="autoResize(this); updateSendBtn()"
-        ></textarea>
-        <button id="btn-send" onclick="sendMessage()" disabled>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-          </svg>
+    <!-- ========================================== -->
+    <!-- VIEW 2: ACTIVE CHAT SESSION (Hidden by Default) -->
+    <!-- ========================================== -->
+    <div id="chat-view" class="hidden flex flex-col w-full max-w-5xl mx-auto px-margin sm:px-gutter lg:px-gutter-desktop py-space-xl gap-space-2xl pb-36 transition-opacity duration-300">
+      
+      <!-- Chat Stream dynamically injected by app.js -->
+      <div class="flex flex-col gap-space-xl w-full" id="chat-history">
+        
+        <!-- Typing indicator (hidden by default) -->
+        <div id="typing-row" class="hidden flex-col items-start gap-space-xs self-start max-w-3xl w-full">
+          <div class="flex items-center gap-space-sm pl-space-xs">
+            <div class="w-8 h-8 rounded-lg bg-secondary-container flex items-center justify-center shadow-sm">
+              <span class="font-label-md text-label-md text-on-secondary-fixed font-bold">T</span>
+            </div>
+            <span class="font-code-citation text-code-citation text-on-surface">TaxSight PH • Typing...</span>
+          </div>
+          <div class="bg-secondary-fixed px-space-xl py-space-lg rounded-2xl rounded-tl-none shadow-md w-fit flex items-center gap-2">
+            <div class="w-2 h-2 rounded-full bg-on-secondary-fixed animate-bounce"></div>
+            <div class="w-2 h-2 rounded-full bg-on-secondary-fixed animate-bounce" style="animation-delay: 0.2s;"></div>
+            <div class="w-2 h-2 rounded-full bg-on-secondary-fixed animate-bounce" style="animation-delay: 0.4s;"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- Bottom Input Bar (Shows only in Chat View) -->
+  <footer id="chat-footer" class="fixed bottom-0 left-0 right-0 z-50 bg-surface/90 backdrop-blur-md pb-space-sm pt-space-xs hidden">
+    <div class="max-w-4xl mx-auto px-gutter flex flex-col items-center gap-2">
+      <div class="w-full flex items-center bg-surface-container-lowest rounded-full px-space-lg py-2.5 shadow-[0_4px_20px_rgba(0,0,0,0.06)] border border-outline-variant/30 focus-within:shadow-md focus-within:border-primary/40 transition-all">
+        <input id="activeChatInput" class="flex-1 bg-transparent font-body-md text-body-md text-on-surface placeholder:text-outline focus:outline-none pr-space-md" placeholder="Magtanong ka... Ask me anything" type="text" onkeydown="handleKey(event, 'chat')">
+        <button id="btn-send-chat" aria-label="Send prompt" class="w-9 h-9 rounded-full flex items-center justify-center text-on-surface hover:bg-surface-container transition-colors" type="button" onclick="triggerSearch('chat')">
+          <span class="material-symbols-outlined text-[20px]">send</span>
         </button>
       </div>
-      <div class="input-hint">TaxAI · Hybrid RAG + Conversational · GPT-OSS 120B via Groq</div>
+      <p class="font-code-citation text-code-citation text-on-surface-variant tracking-normal text-center">
+        TaxSightPH · Hybrid RAG + Conversational · GPT-OSS 120B via Groq
+      </p>
     </div>
+  </footer>
 
-  </main>
-</div>
-
-<script src="/static/js/app.js"></script>
+  <script src="/static/js/app.js"></script>
 </body>
 </html>
