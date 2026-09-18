@@ -33,8 +33,38 @@ def conversational_answer(query: str, history: List[ConvMessage]) -> str:
     return _chat(prompt)
 
 
-def rag_answer(query: str, history: List[ConvMessage], context_text: str) -> str:
-    """Generate an answer grounded in retrieved document context."""
+def rag_answer(query: str, history: List[ConvMessage], context_text: str, max_retries: int = 2) -> str:
+    """Generate an answer grounded in retrieved document context, with an automated verification loop."""
     history_str = format_history(history)
-    prompt = RAG_PROMPT.format(context=context_text, history=history_str, question=query)
-    return _chat(prompt)
+    current_query = query
+    
+    for attempt in range(max_retries):
+        # 1. Draft the grounded answer
+        prompt = RAG_PROMPT.format(context=context_text, history=history_str, question=current_query)
+        draft = _chat(prompt)
+        
+        # If this is the last attempt, return the draft directly
+        if attempt == max_retries - 1:
+            return draft
+            
+        # 2. Verification Step
+        verification_prompt = (
+            f"Context: {context_text}\n\n"
+            f"Draft Answer: {draft}\n\n"
+            "Analyze the Draft Answer. Does it hallucinate any details, numbers, or rules not explicitly found in the Context? "
+            "If it is 100% grounded in the Context, reply exactly with 'VERIFIED'. "
+            "If it contains hallucinations or fabricated information, briefly point out the specific error."
+        )
+        verification = _chat(verification_prompt)
+        
+        if "VERIFIED" in verification.upper():
+            return draft
+            
+        # 3. Apply correction if hallucination was detected
+        current_query = (
+            f"{query}\n\n"
+            f"Note: Your previous attempt failed validation with this critique: {verification}\n"
+            "Please rewrite your answer to fix these errors. Rely STRICTLY on the provided context and admit if the context is insufficient."
+        )
+
+    return draft

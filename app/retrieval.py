@@ -28,7 +28,7 @@ def format_history(history: List[ConvMessage], max_turns: int = 5) -> str:
 
 
 def retrieve_docs(query: str, year_filter: Optional[str], db: Chroma) -> list[Document]:
-    """Run hybrid semantic + BM25 retrieval and return deduplicated results."""
+    """Run hybrid semantic + BM25 retrieval and combine results using Reciprocal Rank Fusion (RRF)."""
     if year_filter:
         semantic_results = db.similarity_search(query, k=5, filter={"year": year_filter})
     else:
@@ -46,11 +46,24 @@ def retrieve_docs(query: str, year_filter: Optional[str], db: Chroma) -> list[Do
     bm25_retriever.k = 5
     bm25_results = bm25_retriever.invoke(query)
 
-    seen, combined = set(), []
-    for doc in semantic_results + bm25_results:
-        doc_id = doc.metadata.get("id")
-        if doc_id not in seen:
-            seen.add(doc_id)
-            combined.append(doc)
+    # Reciprocal Rank Fusion (RRF) Implementation
+    k_constant = 60
+    rrf_scores = {}
+    doc_map = {}
 
-    return combined
+    # Score Semantic Results
+    for rank, doc in enumerate(semantic_results):
+        doc_id = doc.metadata.get("id", f"sem_{rank}")
+        doc_map[doc_id] = doc
+        rrf_scores[doc_id] = rrf_scores.get(doc_id, 0.0) + (1.0 / (k_constant + rank + 1))
+
+    # Score BM25 Results
+    for rank, doc in enumerate(bm25_results):
+        doc_id = doc.metadata.get("id", f"bm25_{rank}")
+        doc_map[doc_id] = doc
+        rrf_scores[doc_id] = rrf_scores.get(doc_id, 0.0) + (1.0 / (k_constant + rank + 1))
+
+    # Sort documents by their combined RRF score descending and return the Top 5
+    sorted_doc_ids = sorted(rrf_scores.keys(), key=lambda x: rrf_scores[x], reverse=True)
+    
+    return [doc_map[doc_id] for doc_id in sorted_doc_ids[:5]]
