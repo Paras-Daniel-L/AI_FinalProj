@@ -1,7 +1,7 @@
 # modified rag-tutorial-v2 by pixegami and williamagyapong
 """
 RAG Chatbot API  –  TaxAI
-Run with: uvicorn main:app --reload --port 8000
+Run with: [uvicorn main:app --reload --port 8000](http://127.0.0.1:8000)
 http://localhost:8000
 
 Requirements:
