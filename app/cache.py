@@ -24,7 +24,16 @@ def is_redis_available() -> bool:
         return False
 
 def make_cache_key(prefix: str, query: str, filter_val: Optional[str] = None) -> str:
-    """Generate a deterministic SHA-256 hash key for retrieval requests."""
+    """Generate a deterministic SHA-256 hash key for retrieval requests.
+
+    NOTE: this is an exact-match cache (case/whitespace-normalized), not a
+    semantic-similarity cache. "How much is VAT?" and "how much is the vat"
+    will hit the same key; "How much is VAT?" and "Magkano ang VAT?" will
+    not, even though they mean the same thing. If your methodology diagram
+    describes this as a "semantic match" check, either relabel that box or
+    ask for the embedding-similarity version to be built - this one only
+    catches literal repeats.
+    """
     normalized = f"{query.strip().lower()}:{filter_val or 'all'}"
     digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
     return f"{prefix}:{digest}"

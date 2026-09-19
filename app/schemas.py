@@ -24,7 +24,10 @@ class QueryResponse(BaseModel):
     sources: list[str]
     classification: str
     predicted_class: int
-    mode: str          # "rag" | "conversational"
+    mode: str                # "rag" | "rag_fallback" | "conversational"
+    verified: bool = True    # False only when a RAG answer failed groundedness verification
+    retries: int = 0         # how many regenerate-and-reverify cycles the RAG path ran
+    degraded: bool = False   # True if the safe fallback response was returned instead of a draft
 
 
 class StatusResponse(BaseModel):

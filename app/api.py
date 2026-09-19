@@ -54,6 +54,31 @@ global_db = Chroma(
 
 print("🚀 [Startup] Loading pre-built BM25 Index...")
 global_bm25 = load_bm25()
+
+# ── Auto-build BM25 if the pickle isn't on disk ────────────────────────────
+# database.py now builds this automatically during ingestion, but this
+# covers every other path that can leave the pickle missing (an older
+# Chroma DB built before that change, someone deleting the pickle by hand,
+# a fresh clone where only the Chroma folder was copied over, etc). Without
+# this, retrieve_docs() silently falls back to semantic-only search and
+# RRF fuses a single list against itself - nothing errors, it just quietly
+# stops being hybrid retrieval.
+if global_bm25 is None:
+  print(
+      "⚠️ [Startup] No BM25 index found on disk — building one now from"
+      " ChromaDB so hybrid retrieval doesn't silently degrade to"
+      " semantic-only search."
+  )
+  global_bm25 = build_and_save_bm25(global_db)
+  if global_bm25 is None:
+    print(
+        "ℹ️ [Startup] ChromaDB is currently empty — BM25 index will be"
+        " built automatically after the first document is added via"
+        " /upload or `python -m app.database --reset`."
+    )
+  else:
+    print("✅ [Startup] BM25 index built and saved.")
+
 print("✅ [Startup] System ready.\n")
 
 
@@ -78,6 +103,9 @@ def _conversational_response(
       classification=label,
       predicted_class=int(predicted_class),
       mode="conversational",
+      verified=True,
+      retries=0,
+      degraded=False,
   )
 
 
@@ -137,22 +165,30 @@ def query_endpoint(body: QueryRequest):
       print("⚠️ [Retrieval] No documents found. Falling back to conversational.")
       return _conversational_response(body, label, predicted_class)
 
-    # Step 4: LLM Generation
+    # Step 4: LLM Generation + verification/retry loop
     t_llm = time.time()
     print("🤖 [LLM] Sending context to Groq...")
     context_text = "\n\n---\n\n".join(doc.page_content for doc in combined)
-    answer = rag_answer(body.query, body.history, context_text)
-    print(f"⏱️ [LLM Complete] Answer generated in {time.time() - t_llm:.3f}s")
+    result = rag_answer(body.query, body.history, context_text)
+    print(
+        f"⏱️ [LLM Complete] verified={result.verified} retries={result.retries_used}"
+        f" degraded={result.degraded} in {time.time() - t_llm:.3f}s"
+    )
 
-    sources = [doc.metadata.get("id", "unknown") for doc in combined]
+    # If we degraded to the safe fallback, don't cite sources for an answer
+    # we didn't actually generate from them.
+    sources = [] if result.degraded else [doc.metadata.get("id", "unknown") for doc in combined]
     print(f"🎉 [Request Finished] Total elapsed time: {time.time() - t0:.3f}s\n")
 
     return QueryResponse(
-        answer=answer,
+        answer=result.answer,
         sources=sources,
         classification=label,
         predicted_class=int(predicted_class),
-        mode="rag",
+        mode="rag_fallback" if result.degraded else "rag",
+        verified=result.verified,
+        retries=result.retries_used,
+        degraded=result.degraded,
     )
 
   except Exception as e:

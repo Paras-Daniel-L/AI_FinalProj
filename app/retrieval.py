@@ -98,6 +98,10 @@ def retrieve_docs(
     except Exception as e:
       print(f"⚠️ BM25 search failed: {e}")
   else:
+    # If you're seeing this on a freshly started server, it means the BM25
+    # pickle wasn't found AND the startup auto-build in api.py also came up
+    # empty (e.g. an empty Chroma DB). Hybrid retrieval is degraded to
+    # semantic-only until a BM25 index exists.
     print("ℹ️ BM25 index not loaded; proceeding with semantic results only.")
 
   if not semantic_results and not bm25_results:

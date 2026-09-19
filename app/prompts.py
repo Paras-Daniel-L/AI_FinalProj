@@ -38,3 +38,40 @@ CONVERSATION HISTORY:
 USER: {question}
 
 Answer:"""
+
+VERIFICATION_PROMPT = """You are a strict fact-checker for a Philippine BIR tax assistant. Your only job is to \
+check whether the DRAFT ANSWER is fully supported by the RETRIEVED DOCUMENTS below. This is a \
+groundedness check, not a quality check - do not reward good writing, only reward accuracy.
+
+RETRIEVED DOCUMENTS:
+{context}
+
+USER QUESTION: {question}
+
+DRAFT ANSWER:
+{draft_answer}
+
+Check every factual claim, figure, section/ruling number, date, rate, and deadline in the draft \
+answer against the retrieved documents. Flag it as unsupported if:
+- it states a specific fact (a number, a date, a ruling/section citation, a rate) that does not \
+appear in the retrieved documents, or
+- it draws a conclusion that goes beyond what the documents actually say, or
+- it contradicts the retrieved documents.
+
+General phrasing, transitions, and reasonable restatements of what the documents say are fine and \
+should NOT be flagged.
+
+Respond with EXACTLY this format and nothing else, on two separate lines:
+VERDICT: <SUPPORTED or UNSUPPORTED>
+REASON: <one short sentence explaining the verdict>"""
+
+SAFE_FALLBACK_RESPONSE = """I wasn't able to verify a confident, fully-grounded answer to your question \
+against the BIR documents I have on file, so rather than risk giving you inaccurate tax information, \
+I'm holding back instead of guessing.
+
+**What you can do:**
+- Try rephrasing your question — especially if you're asking about a specific ruling, section, or year
+- For anything involving deadlines, penalties, or amounts you'll act on, please confirm directly with \
+the BIR (bir.gov.ph) or a licensed tax professional
+
+I'd rather tell you I'm not sure than get a tax detail wrong."""

@@ -8,6 +8,7 @@ from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+from .bm25_manager import BM25_INDEX_PATH, build_and_save_bm25
 from .embeddings import get_embedding_function
 
 load_dotenv()
@@ -30,6 +31,20 @@ def main():
     documents = load_documents()
     chunks    = split_documents(documents)
     add_to_chroma(chunks)
+
+    # ── Keep BM25 in sync with Chroma ────────────────────────────────────
+    # This used to be a separate manual step (generate_bm25.py) that was
+    # easy to forget, which meant a fresh `database.py --reset` run left
+    # hybrid retrieval silently degraded to semantic-only until someone
+    # remembered to run the other script. Building it here means the
+    # offline ingestion pipeline always produces a consistent state.
+    print("🔧 Building BM25 index from ChromaDB...")
+    db = Chroma(persist_directory=CHROMA_PATH, embedding_function=get_embedding_function())
+    bm25 = build_and_save_bm25(db)
+    if bm25 is not None:
+        print(f"✅ BM25 index saved to {BM25_INDEX_PATH}")
+    else:
+        print("⚠️ No documents in ChromaDB — BM25 index was not built.")
 
 
 def load_documents():
