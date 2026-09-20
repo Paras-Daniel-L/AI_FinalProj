@@ -65,27 +65,6 @@ Respond with EXACTLY this format and nothing else, on two separate lines:
 VERDICT: <SUPPORTED or UNSUPPORTED>
 REASON: <one short sentence explaining the verdict>"""
 
-QUERY_REWRITE_PROMPT = """Rewrite the following Taglish (mixed Filipino-English) question into a single, \
-clear, formal, complete English question. Preserve its full meaning exactly - do not add information, \
-do not drop any part of the question, and keep any specific terms (ruling numbers, section numbers, \
-years, amounts) exactly as written. Output ONLY the rewritten English question, nothing else.
-
-TAGLISH QUESTION: {query}
-
-Rewritten English question:"""
-
-TAGLISH_OUTPUT_PROMPT = """Translate the following English answer into natural Taglish, the way a \
-Filipino tax assistant would actually speak - mixing Filipino and English the way Filipino speakers \
-do in real conversation. Keep technical/legal terms (ruling numbers, section numbers, tax terms like \
-"VAT", "ITR", specific rates and dates) in their original form rather than translating them, since \
-those need to stay exact. Preserve all markdown formatting (headers, bullets, bold, tables) and do \
-not add or remove any factual content - this is a translation, not a rewrite.
-
-ENGLISH ANSWER:
-{answer}
-
-Taglish translation:"""
-
 SAFE_FALLBACK_RESPONSE = """I wasn't able to verify a confident, fully-grounded answer to your question \
 against the BIR documents I have on file, so rather than risk giving you inaccurate tax information, \
 I'm holding back instead of guessing.

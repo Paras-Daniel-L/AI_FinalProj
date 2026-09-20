@@ -19,8 +19,7 @@ from .database import (
     split_documents,
 )
 from .embeddings import get_embedding_function
-from .language import detect_taglish
-from .llm import conversational_answer, rag_answer, rewrite_query, translate_to_taglish
+from .llm import conversational_answer, rag_answer
 from .retrieval import retrieve_docs
 from .schemas import QueryRequest, QueryResponse, StatusResponse
 
@@ -107,10 +106,6 @@ def _conversational_response(
       verified=True,
       retries=0,
       degraded=False,
-      # Reported for metadata consistency only - conversational_answer's own
-      # SYSTEM_PROMPT already tells it to match the user's language, so no
-      # separate rewrite/translate call happens on this path.
-      language="taglish" if detect_taglish(body.query) else "english",
   )
 
 
@@ -155,27 +150,11 @@ def query_endpoint(body: QueryRequest):
       print("💬 [Routing] Direct to conversational LLM (Class 0)")
       return _conversational_response(body, label, predicted_class)
 
-    # Step 3: Language detection + query rewriting
-    # Detect on the raw query as typed (the classifier above already saw the
-    # raw query too, and its training data includes Taglish phrasing, so
-    # routing is unaffected). If Taglish, rewrite into formal English BEFORE
-    # retrieval - both BM25 and semantic search work better against a
-    # normalized query, and it gives the generation/verification steps a
-    # single consistent language to reason in.
-    is_taglish = detect_taglish(body.query)
-    if is_taglish:
-      t_rw = time.time()
-      retrieval_query = rewrite_query(body.query)
-      print(f"🌐 [Taglish] Detected. Rewritten query: '{retrieval_query}' "
-            f"in {time.time() - t_rw:.3f}s")
-    else:
-      retrieval_query = body.query
-
-    # Step 4: Hybrid Retrieval
+    # Step 3: Hybrid Retrieval
     t_retrieval = time.time()
     print("🔎 [Retrieval] Starting hybrid search...")
     combined = retrieve_docs(
-        retrieval_query, year_filter, global_db, bm25_retriever=global_bm25
+        body.query, year_filter, global_db, bm25_retriever=global_bm25
     )
     print(
         f"⏱️ [Retrieval Complete] Fetched {len(combined)} docs in"
@@ -186,27 +165,15 @@ def query_endpoint(body: QueryRequest):
       print("⚠️ [Retrieval] No documents found. Falling back to conversational.")
       return _conversational_response(body, label, predicted_class)
 
-    # Step 5: LLM Generation + verification/retry loop (runs in English,
-    # against the formal rewritten query if this started as Taglish)
+    # Step 4: LLM Generation + verification/retry loop
     t_llm = time.time()
     print("🤖 [LLM] Sending context to Groq...")
     context_text = "\n\n---\n\n".join(doc.page_content for doc in combined)
-    result = rag_answer(retrieval_query, body.history, context_text)
+    result = rag_answer(body.query, body.history, context_text)
     print(
         f"⏱️ [LLM Complete] verified={result.verified} retries={result.retries_used}"
         f" degraded={result.degraded} in {time.time() - t_llm:.3f}s"
     )
-
-    # Step 6: Translate back to Taglish - only for a verified, non-degraded
-    # answer. The pre-written safe-fallback text is left in English by
-    # design: it's a fixed, already-reviewed string, and translating it
-    # would be one more unverified LLM call in the one path that's
-    # specifically supposed to avoid unverified output.
-    final_answer = result.answer
-    if is_taglish and not result.degraded:
-      t_tr = time.time()
-      final_answer = translate_to_taglish(result.answer)
-      print(f"🌐 [Taglish] Translated verified answer in {time.time() - t_tr:.3f}s")
 
     # If we degraded to the safe fallback, don't cite sources for an answer
     # we didn't actually generate from them.
@@ -214,7 +181,7 @@ def query_endpoint(body: QueryRequest):
     print(f"🎉 [Request Finished] Total elapsed time: {time.time() - t0:.3f}s\n")
 
     return QueryResponse(
-        answer=final_answer,
+        answer=result.answer,
         sources=sources,
         classification=label,
         predicted_class=int(predicted_class),
@@ -222,7 +189,6 @@ def query_endpoint(body: QueryRequest):
         verified=result.verified,
         retries=result.retries_used,
         degraded=result.degraded,
-        language="taglish" if is_taglish else "english",
     )
 
   except Exception as e:
