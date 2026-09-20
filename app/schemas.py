@@ -28,6 +28,7 @@ class QueryResponse(BaseModel):
     verified: bool = True    # False only when a RAG answer failed groundedness verification
     retries: int = 0         # how many regenerate-and-reverify cycles the RAG path ran
     degraded: bool = False   # True if the safe fallback response was returned instead of a draft
+    language: str = "english"  # "taglish" | "english" - what detect_taglish() found in the raw query
 
 
 class StatusResponse(BaseModel):

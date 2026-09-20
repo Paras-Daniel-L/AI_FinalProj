@@ -11,9 +11,11 @@ from langchain_groq import ChatGroq
 
 from .prompts import (
     CONV_PROMPT,
+    QUERY_REWRITE_PROMPT,
     RAG_PROMPT,
     SAFE_FALLBACK_RESPONSE,
     SYSTEM_PROMPT,
+    TAGLISH_OUTPUT_PROMPT,
     VERIFICATION_PROMPT,
 )
 from .retrieval import format_history
@@ -47,6 +49,27 @@ def conversational_answer(query: str, history: List[ConvMessage]) -> str:
     history_str = format_history(history)
     prompt = CONV_PROMPT.format(history=history_str, question=query)
     return _chat(prompt)
+
+
+def rewrite_query(taglish_query: str) -> str:
+    """Rewrite a Taglish query into formal English before retrieval/generation.
+
+    Only call this when app.language.detect_taglish() returned True - running
+    it on already-English queries wastes an LLM call for no benefit."""
+    prompt = QUERY_REWRITE_PROMPT.format(query=taglish_query)
+    return _chat(prompt).strip()
+
+
+def translate_to_taglish(english_answer: str) -> str:
+    """Translate a VERIFIED English answer into Taglish for delivery.
+
+    Deliberately called only after verification passes, not before: we want
+    to fact-check the answer against the retrieved context first, in the
+    same language as that context, and only translate the confirmed-grounded
+    text. Verifying a translated draft risks the groundedness check getting
+    confused by translation artifacts rather than actual factual drift."""
+    prompt = TAGLISH_OUTPUT_PROMPT.format(answer=english_answer)
+    return _chat(prompt).strip()
 
 
 def _verify_answer(query: str, context_text: str, draft_answer: str) -> Tuple[bool, str]:
