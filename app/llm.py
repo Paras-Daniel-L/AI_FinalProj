@@ -20,7 +20,7 @@ from .retrieval import format_history
 from .schemas import ConvMessage
 
 MODEL_NAME = "openai/gpt-oss-120b"
-TEMPERATURE = 0.6
+TEMPERATURE = 0.0  # Enforces highly deterministic, direct generation
 
 # Matches the "Retry Count <= 3?" node in the automated fallback loop.
 MAX_VERIFICATION_RETRIES = 3
@@ -30,7 +30,7 @@ class RagResult(NamedTuple):
     answer: str
     verified: bool       # True only if a verification pass actually passed
     retries_used: int    # how many regenerate-and-reverify cycles ran
-    degraded: bool        # True if we returned SAFE_FALLBACK_RESPONSE instead of a real draft
+    degraded: bool       # True if we returned SAFE_FALLBACK_RESPONSE instead of a real draft
 
 
 def _chat(user_prompt: str) -> str:
@@ -53,14 +53,6 @@ def _verify_answer(query: str, context_text: str, draft_answer: str) -> Tuple[bo
     """
     Ask the LLM to check the draft against the retrieved context.
     Returns (is_supported, raw_verdict_text).
-
-    IMPORTANT: we pull out the VERDICT line and check for "UNSUPPORTED"
-    *before* checking for "SUPPORTED". "SUPPORTED" is a literal substring
-    of "UNSUPPORTED" - a naive `"VERIFIED" in text` or `"SUPPORTED" in text`
-    check will misclassify a failed verification as a pass whenever the
-    model's wording happens to contain the negative form. That bug is what
-    let hallucinated drafts through verification undetected in the
-    previous version of this loop.
     """
     prompt = VERIFICATION_PROMPT.format(
         context=context_text, question=query, draft_answer=draft_answer
@@ -78,9 +70,6 @@ def _verify_answer(query: str, context_text: str, draft_answer: str) -> Tuple[bo
     elif "SUPPORTED" in verdict_line:
         is_supported = True
     else:
-        # Model didn't follow the format. Fail closed - a false "let's
-        # retry" is cheap, a false "this is grounded" is not, especially
-        # for tax figures someone might act on.
         is_supported = False
 
     return is_supported, verdict_text
@@ -95,15 +84,23 @@ def rag_answer(
     """
     Generate an answer grounded in retrieved context, verify it against that
     context, and retry with the critique fed back into the prompt if it
-    isn't grounded. If every attempt fails verification, returns the
-    pre-written safe fallback response instead of an unverified draft -
-    this is the "graceful degradation" step, not an optional nicety.
+    isn't grounded. 
     """
     history_str = format_history(history)
     current_query = query
 
+    # Strict negative constraint dynamically appended to force direct answers
+    strict_constraint = (
+        "\n\nAnswer the question directly using ONLY the provided context. "
+        "Do not include conversational filler, outside knowledge, or training memory. "
+        "If the context does not contain the exact answer, state that the information is missing."
+    )
+
     for attempt in range(1, max_retries + 1):
+        # Inject the constraint into the base RAG prompt
         prompt = RAG_PROMPT.format(context=context_text, history=history_str, question=current_query)
+        prompt += strict_constraint
+        
         draft = _chat(prompt)
 
         is_supported, verdict_text = _verify_answer(query, context_text, draft)
@@ -123,7 +120,8 @@ def rag_answer(
             f"Note: your previous answer failed a groundedness check for this reason: "
             f"{verdict_text.strip()}\n"
             "Rewrite your answer using ONLY the retrieved documents above. If the documents "
-            "don't contain enough information, say so plainly instead of filling the gap."
+            "don't contain enough information, say so plainly instead of filling the gap. "
+            "Do not include conversational filler."
         )
 
     print(f"🛑 [Fallback] {max_retries} verification attempts failed. Returning safe fallback response.")
