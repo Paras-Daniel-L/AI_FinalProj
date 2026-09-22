@@ -4,35 +4,21 @@ Groq LLM calls: conversational answers and RAG-grounded answers.
 Pulled out of api.py so the model name/temperature live in one place
 and the two generation paths are easy to compare side by side.
 """
-import os
+
 from typing import List
-from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
+
+from langchain_groq import ChatGroq
 
 from .prompts import CONV_PROMPT, RAG_PROMPT, SYSTEM_PROMPT
 from .retrieval import format_history
 from .schemas import ConvMessage
 
-load_dotenv()
-
-MODEL_NAME = "nvidia/nemotron-3-ultra-550b-a55b:free"
-TEMPERATURE = 0.0
+MODEL_NAME = "qwen/qwen3.8-27b"
+TEMPERATURE = 0.6
 
 
 def _chat(user_prompt: str) -> str:
-    api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
-
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key:
-        raise ValueError("OPENROUTER_API_KEY is not set or not loaded from .env")
-    
-    model = ChatOpenAI(
-        model=MODEL_NAME, 
-        temperature=TEMPERATURE, 
-        base_url="https://openrouter.ai/api/v1",
-        openai_api_base="https://openrouter.ai/api/v1",
-        )
-    
+    model = ChatGroq(model=MODEL_NAME, temperature=TEMPERATURE)
     response = model.invoke([
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_prompt},
