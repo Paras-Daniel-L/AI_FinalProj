@@ -23,7 +23,9 @@ from langchain_chroma import Chroma
 from .classifier import build_classifier, classify_query
 from .database import add_to_chroma, clear_database, load_documents, split_documents
 from .embeddings import get_embedding_function
+from .language import LanguageResult, detect_language
 from .llm import conversational_answer, rag_answer
+from .prompts import get_no_answer_message
 from .retrieval import retrieve_docs
 from .schemas import QueryRequest, QueryResponse, StatusResponse
 
@@ -54,15 +56,46 @@ classifier_model = build_classifier(model_type="naive_bayes")
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _conversational_response(body: QueryRequest, label: str, predicted_class: int) -> QueryResponse:
-    """Shared fallback path: answer without RAG context."""
-    answer = conversational_answer(body.query, body.history)
+def _conversational_response(
+    body: QueryRequest, label: str, predicted_class: int, lang: LanguageResult
+) -> QueryResponse:
+    """
+    Genuine open-domain chit-chat (classifier class 0 only). The model is
+    free to use general knowledge here — that's the intended behavior for
+    "hello", "kumusta ka", etc.
+    """
+    answer = conversational_answer(body.query, body.history, language=lang)
     return QueryResponse(
         answer=answer,
         sources=[],
         classification=label,
         predicted_class=int(predicted_class),
         mode="conversational",
+        language=lang.label,
+    )
+
+
+def _no_answer_response(
+    body: QueryRequest, label: str, predicted_class: int, lang: LanguageResult
+) -> QueryResponse:
+    """
+    A tax/board-game query (predicted_class != 0) for which the knowledge
+    base has no supporting evidence — either the DB is empty, retrieval
+    found nothing, or nothing survived the coarse relevance filter.
+
+    This must NOT fall through to _conversational_response(): that path
+    calls an open-domain LLM with no grounding restriction, which would be
+    free to answer from general knowledge or guess — exactly what Issue 2
+    prohibits for a knowledge-base question. No generation call is made on
+    this path at all; the localized refusal is returned directly.
+    """
+    return QueryResponse(
+        answer=get_no_answer_message(lang.label),
+        sources=[],
+        classification=label,
+        predicted_class=int(predicted_class),
+        mode="no_answer",
+        language=lang.label,
     )
 
 
@@ -102,14 +135,24 @@ def query_endpoint(body: QueryRequest):
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
     try:
-        # Step 1: Classify
+        # Step 0: Detect the user's language once, from the untouched
+        # original query, before anything else runs. This value — not a
+        # re-derivation from a possibly-mutated prompt later — is what
+        # travels through retrieval into generation. See app/language.py.
+        lang = detect_language(body.query)
+
+        # Step 1: Classify (topic routing — separate concern from language)
         predicted_class, label, year_filter = classify_query(classifier_model, body.query)
 
-        # Step 2: Chit-chat -> skip RAG, go conversational immediately
+        # Step 2: Chit-chat -> skip RAG, go conversational immediately.
+        # This is the ONLY class allowed to answer from general knowledge.
         if predicted_class == 0:
-            return _conversational_response(body, label, predicted_class)
+            return _conversational_response(body, label, predicted_class, lang)
 
-        # Step 3: Knowledge query -> try RAG
+        # Step 3: Knowledge query -> try RAG. An empty/unreachable DB means
+        # there is no evidence to ground an answer in, so this now returns
+        # a no-answer response rather than silently falling back to
+        # open-domain chat (Issue 2).
         try:
             db = Chroma(persist_directory=CHROMA_PATH, embedding_function=get_embedding_function())
             db_empty = len(db.get(include=[])["ids"]) == 0
@@ -117,26 +160,43 @@ def query_endpoint(body: QueryRequest):
             db_empty, db = True, None
 
         if db_empty or db is None:
-            return _conversational_response(body, label, predicted_class)
+            return _no_answer_response(body, label, predicted_class, lang)
 
-        # Step 4: Retrieve documents
+        # Step 4: Retrieve documents (RRF-fused, then coarse-relevance
+        # filtered — see retrieve_docs()/filter_by_relevance() in
+        # retrieval.py). Empty here means either nothing was retrieved or
+        # nothing cleared the relevance bar.
         combined = retrieve_docs(body.query, year_filter, db)
 
-        # No relevant docs found -> fall back to conversational
         if not combined:
-            return _conversational_response(body, label, predicted_class)
+            return _no_answer_response(body, label, predicted_class, lang)
 
-        # Step 5: RAG answer with retrieved context
+        # Step 5: RAG answer with retrieved context, in the user's language.
+        # rag_answer() itself may return the canned no-answer message (the
+        # generation-layer grounding check caught something the coarse
+        # retrieval-layer filter above let through) — reflect that in
+        # `mode`/`sources` rather than claiming these sources were used.
         context_text = "\n\n---\n\n".join(doc.page_content for doc in combined)
-        answer = rag_answer(body.query, body.history, context_text)
-        sources = [doc.metadata.get("id", "unknown") for doc in combined]
+        answer = rag_answer(body.query, body.history, context_text, language=lang)
 
+        if answer == get_no_answer_message(lang.label):
+            return QueryResponse(
+                answer=answer,
+                sources=[],
+                classification=label,
+                predicted_class=int(predicted_class),
+                mode="no_answer",
+                language=lang.label,
+            )
+
+        sources = [doc.metadata.get("id", "unknown") for doc in combined]
         return QueryResponse(
             answer=answer,
             sources=sources,
             classification=label,
             predicted_class=int(predicted_class),
             mode="rag",
+            language=lang.label,
         )
 
     except Exception as e:

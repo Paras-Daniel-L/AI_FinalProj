@@ -4,7 +4,7 @@ Request/response models for the API.
 Pulled out of api.py so routes and data shapes are easy to tell apart at a glance.
 """
 
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel
 
@@ -24,7 +24,8 @@ class QueryResponse(BaseModel):
     sources: list[str]
     classification: str
     predicted_class: int
-    mode: str          # "rag" | "conversational"
+    mode: str          # "rag" | "conversational" | "no_answer"
+    language: Optional[str] = None   # "english" | "filipino" | "taglish"
 
 
 class StatusResponse(BaseModel):
