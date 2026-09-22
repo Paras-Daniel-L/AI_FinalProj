@@ -136,3 +136,4 @@ zstandard==0.25.0
 redis
 pip install redis redisvl #this is needed for redis
 pip-24.3.1 #this is the version of the pip before updating
+pip install sentence-transformers torch # for the sentence-transformers
