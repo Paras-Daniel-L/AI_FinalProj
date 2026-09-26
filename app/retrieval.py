@@ -107,6 +107,10 @@ def source_label(doc: Document, number: int) -> str:
     category = doc.metadata.get("year")
     if category:
         parts += f" ({category})"
+    # Text read from a scan by OCR can contain misread digits (e.g. an RDO code
+    # "93B" read as "938"). Flag it so the user knows to check the original PDF.
+    if doc.metadata.get("ocr"):
+        parts += " · OCR"
     return parts
 
 

@@ -263,7 +263,9 @@ def rag_answer(
         # last attempt (the old code returned the final draft unverified).
         passed, critique = _verify(context_text, draft)
         if passed:
+            print(f"✅ [Verifier] attempt {_attempt + 1}/{max_retries}: supported")
             return draft
+        print(f"❌ [Verifier] attempt {_attempt + 1}/{max_retries}: rejected — {critique}")
 
         # Feed the critique back as its OWN labeled prompt section — never
         # glued onto `query` — so the question text (and the language

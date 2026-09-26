@@ -29,6 +29,7 @@ from .language import LanguageResult, detect_language
 from .llm import rag_answer
 from .prompts import get_greeting_message, get_no_answer_message
 from .retrieval import format_context, retrieve_docs, source_labels
+from .sanitize import rejection_message, sanitize_history, sanitize_query
 from .schemas import QueryRequest, QueryResponse, StatusResponse
 
 load_dotenv()
@@ -45,6 +46,17 @@ app.add_middleware(
 
 CHROMA_PATH = "chroma"
 DATA_PATH   = "data"
+
+# Conversation history is OFF by default: every question is answered on its
+# own. Retrieval never looks at history, so history could only reach the
+# generator's prompt — where it (a) made every question after the first in a
+# chat skip the answer cache, (b) added tokens to every call, and (c) let the
+# generator reuse facts from EARLIER answers that the verifier never sees, so
+# the verifier flagged them as unsupported and forced extra retries. Set
+# USE_HISTORY=1 to bring it back (the cache then only serves first-turn
+# questions). Real follow-ups ("and what about 2025?") need a
+# question-rewriting step first; see the open "query rewriter" item.
+USE_HISTORY = os.environ.get("USE_HISTORY", "0").strip() in ("1", "true", "True", "yes")
 
 # api.py lives in app/, so the project root (and static/) is one level up.
 STATIC_DIR = Path(__file__).parent.parent / "static"
@@ -106,6 +118,22 @@ def _no_answer_response(lang: LanguageResult) -> QueryResponse:
     )
 
 
+def _rejected_response(lang: LanguageResult, message: str) -> QueryResponse:
+    """
+    The input was cleaned and then refused before any retrieval or model call
+    (empty, too long, too many questions, too many issuances — see
+    app/sanitize.py). Fixed localized text asking the user to narrow the
+    question; costs nothing and is never cached.
+    """
+    return QueryResponse(
+        answer=message,
+        sources=[],
+        classification="Query not processed",
+        mode="rejected",
+        language=lang.label,
+    )
+
+
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
@@ -144,23 +172,38 @@ def query_endpoint(body: QueryRequest):
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
     try:
-        # Step 0: Detect the user's language once, from the untouched
-        # original query, before anything else runs. This value — not a
-        # re-derivation from a possibly-mutated prompt later — is what
-        # travels through retrieval into generation. See app/language.py.
-        lang = detect_language(body.query)
+        # Step 0a: Sanitize (app/sanitize.py). Cleans the text (invisible and
+        # control characters, Unicode form, all whitespace incl. newlines
+        # -> single spaces) and refuses a question the 5-excerpt evidence
+        # budget can't answer (too long, too many questions, too many
+        # issuances) with a fixed localized message — no retrieval, no
+        # model call, nothing cached. From here on ONLY the cleaned `query`
+        # and `history` are used, never the raw request fields.
+        checked = sanitize_query(body.query)
+        query = checked.query
+        history = sanitize_history(body.history) if USE_HISTORY else []
+
+        # Step 0b: Detect the user's language once, from the cleaned query,
+        # before anything else runs. This value — not a re-derivation from a
+        # possibly-mutated prompt later — is what travels through retrieval
+        # into generation. See app/language.py.
+        lang = detect_language(query)
+
+        if not checked.ok:
+            print(f"🧼 [Sanitize] rejected ({checked.reason}): {checked.info}")
+            return _rejected_response(lang, rejection_message(checked, lang.label))
 
         # Step 1: Bare greeting ("hi", "kumusta ka") -> fixed reply, no LLM
         # call, no retrieval. Anything with real content attached to a
         # greeting-looking prefix does NOT match here and falls through to
         # the normal pipeline below.
-        if is_greeting(body.query):
+        if is_greeting(query):
             return _greeting_response(lang)
 
         # Step 2: Route (year filter from an explicit year/citation in the
         # query, or None for whole-corpus search). Rule-based; the
         # classification LABEL is derived later, from what retrieval found.
-        year_filter = get_year_filter(body.query)
+        year_filter = get_year_filter(query)
 
         # Step 3: Knowledge query -> try RAG. An empty/unreachable DB means
         # there is no evidence to ground an answer in, so this returns a
@@ -184,11 +227,17 @@ def query_endpoint(body: QueryRequest):
         # includes the index contents and the model/prompt/retrieval settings,
         # so a changed index or pipeline never serves an old answer.
         cache_key = None
-        if answer_cache.CACHE_ENABLED and not body.history and not body.bypass_cache:
-            cache_key = answer_cache.make_key(body.query, chunk_ids)
+        if not answer_cache.CACHE_ENABLED:
+            print("💾 [Cache] off (CACHE_ENABLED=0)")
+        elif body.bypass_cache:
+            print("💾 [Cache] bypassed by this request")
+        elif history:
+            print("💾 [Cache] skipped — this is a follow-up and history is in use (USE_HISTORY=1)")
+        else:
+            cache_key = answer_cache.make_key(query, chunk_ids)
             hit = answer_cache.get(cache_key) if cache_key else None
             if hit:
-                print("💾 [Cache] hit — serving a previously verified answer")
+                print("💾 [Cache] hit — serving a previously verified answer, no model calls")
                 return QueryResponse(
                     answer=hit["answer"],
                     sources=hit["sources"],
@@ -197,12 +246,13 @@ def query_endpoint(body: QueryRequest):
                     language=hit["language"] or lang.label,
                     cached=True,
                 )
+            print("💾 [Cache] miss — running the full pipeline")
 
         # Step 4: Retrieve documents (RRF-fused, then coarse-relevance
         # filtered — see retrieve_docs()/filter_by_relevance() in
         # retrieval.py). Empty here means either nothing was retrieved or
         # nothing cleared the relevance bar.
-        combined = retrieve_docs(body.query, year_filter, db)
+        combined = retrieve_docs(query, year_filter, db)
 
         if not combined:
             return _no_answer_response(lang)
@@ -219,7 +269,7 @@ def query_endpoint(body: QueryRequest):
         # Numbered, labeled chunks ([1] RMC No. 34-2024, p.3 (2024)) so the
         # answer can cite sources and the verifier can check each citation.
         context_text = format_context(combined)
-        answer = rag_answer(body.query, body.history, context_text, language=lang)
+        answer = rag_answer(query, history, context_text, language=lang)
 
         if answer == get_no_answer_message(lang.label):
             return _no_answer_response(lang)
@@ -230,7 +280,7 @@ def query_endpoint(body: QueryRequest):
         # Only a verified answer ever reaches this point (refusals returned
         # above), so it is safe to store. Refusals and errors are never cached.
         if cache_key:
-            answer_cache.put(cache_key, body.query, answer, sources, label, lang.label)
+            answer_cache.put(cache_key, query, answer, sources, label, lang.label)
 
         return QueryResponse(
             answer=answer,

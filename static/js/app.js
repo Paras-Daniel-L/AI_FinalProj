@@ -93,7 +93,11 @@ async function sendMessage(query) {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
-      throw new Error(err.detail || `HTTP ${res.status}`);
+      // FastAPI validation errors (HTTP 422) carry a list of objects, not a string.
+      const detail = Array.isArray(err.detail)
+        ? err.detail.map(d => d.msg || JSON.stringify(d)).join('; ')
+        : err.detail;
+      throw new Error(detail || `HTTP ${res.status}`);
     }
 
     const data = await res.json();
@@ -161,6 +165,7 @@ function appendBotBubble(msg) {
     rag:       { badge: 'Verified RAG Synthesis', chip: 'RAG Processed' },
     no_answer: { badge: 'No Supported Answer',    chip: 'Refused (no evidence)' },
     greeting:  { badge: 'Greeting',               chip: 'Fixed Reply' },
+    rejected:  { badge: 'Question Not Processed', chip: 'Rejected (input)' },
     error:     { badge: 'Error',                  chip: 'Error' },
   };
   const modeInfo = MODE_LABELS[msg.mode] || MODE_LABELS.error;
