@@ -23,10 +23,9 @@ from langchain_chroma import Chroma
 from .classifier import build_classifier, classify_query
 from .database import add_to_chroma, clear_database, load_documents, split_documents
 from .embeddings import get_embedding_function
-from .greetings import is_greeting
 from .language import LanguageResult, detect_language
-from .llm import rag_answer
-from .prompts import get_greeting_message, get_no_answer_message
+from .llm import conversational_answer, rag_answer
+from .prompts import get_no_answer_message
 from .retrieval import retrieve_docs
 from .schemas import QueryRequest, QueryResponse, StatusResponse
 
@@ -57,24 +56,21 @@ classifier_model = build_classifier(model_type="naive_bayes")
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _greeting_response(lang: LanguageResult) -> QueryResponse:
+def _conversational_response(
+    body: QueryRequest, label: str, predicted_class: int, lang: LanguageResult
+) -> QueryResponse:
     """
-    A bare greeting ("hi", "kumusta ka") with nothing else attached — see
-    app/greetings.py's is_greeting() for exactly what qualifies. Returns a
-    fixed, localized greeting string; NO LLM call happens on this path.
-
-    Sagot AI has no general-knowledge/open-domain conversation mode
-    anymore (see prompts.SYSTEM_PROMPT) — this exists only so a plain
-    "hello" doesn't come back as a no-answer refusal. predicted_class is
-    -1 as a sentinel: the classifier never runs for this path, so there
-    is no real class index to report.
+    Genuine open-domain chit-chat (classifier class 0 only). The model is
+    free to use general knowledge here — that's the intended behavior for
+    "hello", "kumusta ka", etc.
     """
+    answer = conversational_answer(body.query, body.history, language=lang)
     return QueryResponse(
-        answer=get_greeting_message(lang.label),
+        answer=answer,
         sources=[],
-        classification="Greeting",
-        predicted_class=-1,
-        mode="greeting",
+        classification=label,
+        predicted_class=int(predicted_class),
+        mode="conversational",
         language=lang.label,
     )
 
@@ -83,11 +79,15 @@ def _no_answer_response(
     body: QueryRequest, label: str, predicted_class: int, lang: LanguageResult
 ) -> QueryResponse:
     """
-    A tax query for which the knowledge base has no supporting evidence —
-    either the DB is empty, retrieval found nothing, or nothing survived
-    the coarse relevance filter. No generation call is made on this path
-    at all (no open-domain fallback exists to fall through to); the
-    localized refusal is returned directly.
+    A tax/board-game query (predicted_class != 0) for which the knowledge
+    base has no supporting evidence — either the DB is empty, retrieval
+    found nothing, or nothing survived the coarse relevance filter.
+
+    This must NOT fall through to _conversational_response(): that path
+    calls an open-domain LLM with no grounding restriction, which would be
+    free to answer from general knowledge or guess — exactly what Issue 2
+    prohibits for a knowledge-base question. No generation call is made on
+    this path at all; the localized refusal is returned directly.
     """
     return QueryResponse(
         answer=get_no_answer_message(lang.label),
@@ -127,10 +127,9 @@ def get_status():
 @app.post("/query", response_model=QueryResponse)
 def query_endpoint(body: QueryRequest):
     """
-    Grounded BIR-tax RAG endpoint. No general-knowledge fallback exists:
-    every non-greeting query is classified (for year routing, see
-    classifier.py) then answered strictly from retrieved documents, or
-    refused via the canned no-answer response.
+    Smart RAG + Conversational endpoint.
+    - Chit-chat (class 0) -> goes straight to conversational LLM
+    - Tax / board game queries -> tries RAG first, falls back to conversational if no docs found
     """
     if not body.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
@@ -142,25 +141,18 @@ def query_endpoint(body: QueryRequest):
         # travels through retrieval into generation. See app/language.py.
         lang = detect_language(body.query)
 
-        # Step 1: Bare greeting ("hi", "kumusta ka") -> fixed reply, no LLM
-        # call, no classifier call. Checked BEFORE classification because
-        # every class in classifier.py is now a real BIR tax year/FAQ
-        # bucket — there is no "class 0 means chit-chat" special case to
-        # branch on anymore (that used to be predicted_class == 0; a
-        # greeting today would just get force-classified into whichever
-        # tax-year class its wording is TF-IDF-closest to, which is not
-        # meaningful for a 2-word greeting). Anything with real content
-        # attached to a greeting-looking prefix does NOT match here and
-        # falls through to normal classification below.
-        if is_greeting(body.query):
-            return _greeting_response(lang)
-
-        # Step 2: Classify (year routing — separate concern from language).
+        # Step 1: Classify (topic routing — separate concern from language)
         predicted_class, label, year_filter = classify_query(classifier_model, body.query)
 
+        # Step 2: Chit-chat -> skip RAG, go conversational immediately.
+        # This is the ONLY class allowed to answer from general knowledge.
+        if predicted_class == 0:
+            return _conversational_response(body, label, predicted_class, lang)
+
         # Step 3: Knowledge query -> try RAG. An empty/unreachable DB means
-        # there is no evidence to ground an answer in, so this returns a
-        # no-answer response — there is no open-domain fallback to drop to.
+        # there is no evidence to ground an answer in, so this now returns
+        # a no-answer response rather than silently falling back to
+        # open-domain chat (Issue 2).
         try:
             db = Chroma(persist_directory=CHROMA_PATH, embedding_function=get_embedding_function())
             db_empty = len(db.get(include=[])["ids"]) == 0
@@ -217,7 +209,7 @@ async def upload_pdf(file: UploadFile = File(...), category: str = Form(default=
     Upload a PDF and index it into ChromaDB.
 
     `category` is optional and maps to the same folder-based `year` tag
-    load_documents() uses for everything else (e.g. "2022", "2026", "faq").
+    load_documents() uses for everything else (e.g. "2022", "monopoly").
     Pass one of the existing YEAR_FOLDERS values if this document should
     stay reachable through the classifier's year_filter; leave it blank
     to drop the file straight into data/ root, tagged "uncategorized" by

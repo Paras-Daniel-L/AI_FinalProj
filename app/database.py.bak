@@ -16,14 +16,11 @@ load_dotenv()
 CHROMA_PATH = "chroma"
 DATA_PATH   = "data"
 
-# Known year/topic folders — must match classifier.KNOWN_YEARS plus "faq".
-# This list only affects LOGGING (whether a folder's name is flagged as
-# "not filterable by the classifier") — it does not gate which folders get
-# loaded. Every folder under DATA_PATH that contains at least one PDF gets
-# loaded, no matter its name or depth. Board games are gone: the corpus is
-# scoped to BIR tax content only (data/monopoly, data/ticket_to_ride should
-# be deleted from disk and the DB re-ingested with --reset).
-YEAR_FOLDERS = ["2001", "2002", "2003", "2022", "2023", "2024", "2025", "2026", "faq"]
+# Known year/topic folders. This list now only affects LOGGING (whether a
+# folder's name is flagged as "not filterable by the classifier") — it no
+# longer gates which folders get loaded. Every folder under DATA_PATH that
+# contains at least one PDF gets loaded, no matter its name or depth.
+YEAR_FOLDERS = ["monopoly", "ticket_to_ride", "2001", "2002", "2003", "2022"]
 
 
 def main():

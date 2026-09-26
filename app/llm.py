@@ -1,8 +1,11 @@
 """
-Groq LLM calls: conversational answers and RAG-grounded answers.
+Groq LLM calls: RAG-grounded answers.
 
-Pulled out of api.py so the model name/temperature live in one place
-and the two generation paths are easy to compare side by side.
+Pulled out of api.py so the model name/temperature live in one place.
+
+Sagot AI has no open-domain/conversational generation path anymore — see
+prompts.SYSTEM_PROMPT and app/greetings.py. The only LLM call left is the
+grounded, retrieval-anchored one below.
 """
 
 import re
@@ -12,7 +15,6 @@ from langchain_groq import ChatGroq
 
 from .language import LanguageResult, detect_language
 from .prompts import (
-    CONV_PROMPT,
     NO_ANSWER_SENTINEL,
     RAG_PROMPT,
     SYSTEM_PROMPT,
@@ -44,20 +46,6 @@ def _chat(user_prompt: str) -> str:
         {"role": "user", "content": user_prompt},
     ])
     return response.content
-
-
-def conversational_answer(
-    query: str,
-    history: List[ConvMessage],
-    language: Optional[LanguageResult] = None,
-) -> str:
-    """Generate a conversational response without RAG context."""
-    lang = language or detect_language(query)
-    history_str = format_history(history)
-    prompt = CONV_PROMPT.format(
-        user_language=lang.display_name, history=history_str, question=query
-    )
-    return _chat(prompt)
 
 
 def rag_answer(
