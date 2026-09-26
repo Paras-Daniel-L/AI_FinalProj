@@ -9,6 +9,7 @@ from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+from .cache import clear_cache
 from .embeddings import check_index_compatible, get_embedding_function, write_index_config
 from .ocr import choose_page_text, unavailable_reason
 
@@ -198,6 +199,8 @@ def add_to_chroma(chunks: list[Document]):
         print(f"👉 Adding new documents: {len(new_chunks)}")
         db.add_documents(new_chunks, ids=[c.metadata["id"] for c in new_chunks])
         write_index_config(CHROMA_PATH)
+        # New chunks can change the right answer to a previously cached question.
+        clear_cache()
         print("✅ Database updated successfully.")
     else:
         print("✅ No new documents to add.")
@@ -228,6 +231,9 @@ def clear_database():
     if os.path.exists(CHROMA_PATH):
         shutil.rmtree(CHROMA_PATH)
         print("🗑️  Database cleared.")
+    # Chunk ids survive a rebuild but their text may not (e.g. OCR changes), so
+    # cached answers from the old index must not outlive it.
+    clear_cache()
 
 
 if __name__ == "__main__":

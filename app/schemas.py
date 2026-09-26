@@ -17,6 +17,7 @@ class ConvMessage(BaseModel):
 class QueryRequest(BaseModel):
     query: str
     history: List[ConvMessage] = []   # conversation turns before this message
+    bypass_cache: bool = False        # skip the answer cache (evaluation runs, debugging)
 
 
 class QueryResponse(BaseModel):
@@ -25,6 +26,7 @@ class QueryResponse(BaseModel):
     classification: str   # source categories of the retrieved chunks, e.g. "BIR Tax Query (Source Year: 2024)"
     mode: str          # "rag" | "no_answer" | "greeting"
     language: Optional[str] = None   # "english" | "filipino" | "taglish"
+    cached: bool = False             # True when served from the answer cache (already verified)
 
 
 class StatusResponse(BaseModel):

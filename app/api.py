@@ -20,6 +20,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from langchain_chroma import Chroma
 
+from . import cache as answer_cache
 from .classifier import NO_SOURCES_LABEL, get_year_filter, label_from_docs
 from .database import add_to_chroma, clear_database, load_documents, split_documents
 from .embeddings import check_index_compatible, get_embedding_function
@@ -166,14 +167,36 @@ def query_endpoint(body: QueryRequest):
         # no-answer response — there is no open-domain fallback to drop to.
         try:
             db = Chroma(persist_directory=CHROMA_PATH, embedding_function=get_embedding_function())
-            db_empty = len(db.get(include=[])["ids"]) == 0
+            chunk_ids = db.get(include=[])["ids"]
+            db_empty = len(chunk_ids) == 0
         except Exception:
-            db_empty, db = True, None
+            db_empty, db, chunk_ids = True, None, []
 
         if db_empty or db is None:
             return _no_answer_response(lang)
 
         _warn_if_stale_index()
+
+        # Step 3b: Answer cache (exact match on the normalized query — see
+        # app/cache.py for why it is deliberately not a semantic cache). Only
+        # first-turn questions are looked up or stored: a follow-up's meaning
+        # depends on the earlier turns, which the key doesn't capture. The key
+        # includes the index contents and the model/prompt/retrieval settings,
+        # so a changed index or pipeline never serves an old answer.
+        cache_key = None
+        if answer_cache.CACHE_ENABLED and not body.history and not body.bypass_cache:
+            cache_key = answer_cache.make_key(body.query, chunk_ids)
+            hit = answer_cache.get(cache_key) if cache_key else None
+            if hit:
+                print("💾 [Cache] hit — serving a previously verified answer")
+                return QueryResponse(
+                    answer=hit["answer"],
+                    sources=hit["sources"],
+                    classification=hit["classification"],
+                    mode="rag",
+                    language=hit["language"] or lang.label,
+                    cached=True,
+                )
 
         # Step 4: Retrieve documents (RRF-fused, then coarse-relevance
         # filtered — see retrieve_docs()/filter_by_relevance() in
@@ -203,6 +226,12 @@ def query_endpoint(body: QueryRequest):
 
         # Same numbering as the context, so a [n] in the answer = sources[n-1].
         sources = source_labels(combined)
+
+        # Only a verified answer ever reaches this point (refusals returned
+        # above), so it is safe to store. Refusals and errors are never cached.
+        if cache_key:
+            answer_cache.put(cache_key, body.query, answer, sources, label, lang.label)
+
         return QueryResponse(
             answer=answer,
             sources=sources,

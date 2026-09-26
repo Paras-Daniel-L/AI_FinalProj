@@ -10,3 +10,13 @@ Requirements:
     3. deactivate to go out from virtual environment
     (plus all deps from the original RAG project)
 """
+
+available agents in groq
+qwen/qwen3.8-27b
+meta-llama/llama-prompt-guard-2-22m
+allam-2-7b
+openai/gpt-oss-20b
+meta-llama/llama-prompt-guard-2-86m
+openai/gpt-oss-120b
+openai/gpt-oss-safeguard-20b
+whisper-large-v3-turbo

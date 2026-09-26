@@ -103,6 +103,7 @@ async function sendMessage(query) {
       classification: data.classification,
       mode: data.mode,
       sources: data.sources || [],
+      cached: !!data.cached,
     };
     messages.push(botMsg);
     appendBotBubble(botMsg);
@@ -210,7 +211,7 @@ function appendBotBubble(msg) {
     
     <div class="flex items-center gap-space-xs mt-space-2xs pl-space-xs">
       <span class="font-label-sm text-label-sm px-space-md py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed font-medium shadow-sm">
-        ${modeInfo.chip}
+        ${modeInfo.chip}${msg.cached ? ' · Cached' : ''}
       </span>
       <span class="font-label-sm text-label-sm px-space-md py-1 rounded-full bg-secondary-container text-on-secondary-fixed font-medium shadow-sm">
         ${msg.classification || 'General Context'}
