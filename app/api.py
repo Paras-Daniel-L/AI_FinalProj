@@ -22,12 +22,12 @@ from langchain_chroma import Chroma
 
 from .classifier import NO_SOURCES_LABEL, get_year_filter, label_from_docs
 from .database import add_to_chroma, clear_database, load_documents, split_documents
-from .embeddings import get_embedding_function
+from .embeddings import check_index_compatible, get_embedding_function
 from .greetings import is_greeting
 from .language import LanguageResult, detect_language
 from .llm import rag_answer
 from .prompts import get_greeting_message, get_no_answer_message
-from .retrieval import retrieve_docs
+from .retrieval import format_context, retrieve_docs, source_labels
 from .schemas import QueryRequest, QueryResponse, StatusResponse
 
 load_dotenv()
@@ -52,6 +52,21 @@ STATIC_DIR = Path(__file__).parent.parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+_warned_stale_index = False
+
+
+def _warn_if_stale_index() -> None:
+    """Print (once) if the Chroma index was built with different embedding
+    settings than the query side now uses — retrieval would silently degrade."""
+    global _warned_stale_index
+    if _warned_stale_index:
+        return
+    problem = check_index_compatible(CHROMA_PATH, has_documents=True)
+    if problem:
+        _warned_stale_index = True
+        print(f"\n🚨 [Embeddings] {problem}\n")
+
 
 def _greeting_response(lang: LanguageResult) -> QueryResponse:
     """
@@ -158,6 +173,8 @@ def query_endpoint(body: QueryRequest):
         if db_empty or db is None:
             return _no_answer_response(lang)
 
+        _warn_if_stale_index()
+
         # Step 4: Retrieve documents (RRF-fused, then coarse-relevance
         # filtered — see retrieve_docs()/filter_by_relevance() in
         # retrieval.py). Empty here means either nothing was retrieved or
@@ -176,13 +193,16 @@ def query_endpoint(body: QueryRequest):
         # generation-layer grounding check caught something the coarse
         # retrieval-layer filter above let through) — reflect that in
         # `mode`/`sources` rather than claiming these sources were used.
-        context_text = "\n\n---\n\n".join(doc.page_content for doc in combined)
+        # Numbered, labeled chunks ([1] RMC No. 34-2024, p.3 (2024)) so the
+        # answer can cite sources and the verifier can check each citation.
+        context_text = format_context(combined)
         answer = rag_answer(body.query, body.history, context_text, language=lang)
 
         if answer == get_no_answer_message(lang.label):
             return _no_answer_response(lang)
 
-        sources = [doc.metadata.get("id", "unknown") for doc in combined]
+        # Same numbering as the context, so a [n] in the answer = sources[n-1].
+        sources = source_labels(combined)
         return QueryResponse(
             answer=answer,
             sources=sources,

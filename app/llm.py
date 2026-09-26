@@ -26,7 +26,7 @@ from .prompts import (
 from .retrieval import format_history
 from .schemas import ConvMessage
 
-MODEL_NAME = "qwen/qwen3.8-27b"
+MODEL_NAME = "openai/gpt-oss-120b"
 # Both calls are grounded/audit tasks, so they run (near-)deterministic.
 # Kept separate so they can be tuned independently for the thesis ablations.
 GENERATION_TEMPERATURE = 0.1

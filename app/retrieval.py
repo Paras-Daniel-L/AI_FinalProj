@@ -27,11 +27,13 @@ their outputs via `reciprocal_rank_fusion()`.
 """
 
 import os
+import re
+import threading
 from typing import Dict, List, Optional, Sequence
 
 from langchain_chroma import Chroma
-from langchain_community.retrievers import BM25Retriever
 from langchain_core.documents import Document
+from rank_bm25 import BM25Okapi
 
 from .schemas import ConvMessage
 
@@ -56,6 +58,16 @@ RRF_FINAL_TOP_K: int = int(os.environ.get("RRF_FINAL_TOP_K", "5"))
 MIN_RRF_SCORE: float = float(os.environ.get("MIN_RRF_SCORE", "0.0"))
 MIN_RETRIEVER_CORROBORATION: int = int(os.environ.get("MIN_RETRIEVER_CORROBORATION", "0"))
 
+# Optional semantic-distance gate (OFF by default). Chroma returns a distance
+# (lower = closer; default metric is squared L2). When set, a chunk found ONLY
+# by the semantic retriever and farther than this is dropped; chunks that BM25
+# also found are kept (two retrievers agreeing is stronger evidence than one
+# distance). The right value must be calibrated on labeled queries — turn on
+# the "📏 [Semantic]" log lines below, compare answerable vs out-of-scope
+# queries, then set e.g. MAX_SEMANTIC_DISTANCE=1.1 in .env.
+_max_dist = os.environ.get("MAX_SEMANTIC_DISTANCE", "").strip()
+MAX_SEMANTIC_DISTANCE: Optional[float] = float(_max_dist) if _max_dist else None
+
 
 def format_history(history: List[ConvMessage], max_turns: int = 5) -> str:
     """Format recent conversation turns into a readable string for the prompt."""
@@ -67,6 +79,58 @@ def format_history(history: List[ConvMessage], max_turns: int = 5) -> str:
         prefix = "User" if msg.role == "user" else "Assistant"
         lines.append(f"{prefix}: {msg.content}")
     return "\n".join(lines)
+
+
+def source_title(doc: Document) -> str:
+    """
+    Human-readable issuance name for a chunk, from its PDF filename, e.g.
+    "data\\2024\\RMC No. 34-2024.pdf" -> "RMC No. 34-2024". Handles both
+    Windows and POSIX separators; falls back to "Unknown source".
+    """
+    source = str(doc.metadata.get("source") or "")
+    name = re.split(r"[\\/]", source)[-1]
+    name = re.sub(r"\.pdf$", "", name, flags=re.IGNORECASE).strip()
+    return name or "Unknown source"
+
+
+def source_label(doc: Document, number: int) -> str:
+    """
+    "[1] RMC No. 34-2024, p.3 (2024)" — the same label is used as the
+    chunk header in the prompt context AND as the entry in the response's
+    `sources`, so a citation like [1] in the answer maps 1:1 to a source.
+    PyPDF pages are 0-indexed; the label shows the human page number.
+    """
+    parts = f"[{number}] {source_title(doc)}"
+    page = doc.metadata.get("page")
+    if isinstance(page, int):
+        parts += f", p.{page + 1}"
+    category = doc.metadata.get("year")
+    if category:
+        parts += f" ({category})"
+    return parts
+
+
+def format_context(docs: List[Document]) -> str:
+    """
+    Build the RETRIEVED DOCUMENTS text for the generation and verifier
+    prompts, one numbered, labeled block per chunk:
+
+        [1] RMC No. 34-2024, p.3 (2024)
+        <chunk text>
+
+    Numbering follows the fused ranking order, and matches the labels
+    returned by `source_labels()`.
+    """
+    blocks = [
+        f"{source_label(doc, i)}\n{doc.page_content.strip()}"
+        for i, doc in enumerate(docs, start=1)
+    ]
+    return "\n\n---\n\n".join(blocks)
+
+
+def source_labels(docs: List[Document]) -> List[str]:
+    """Labels for the response's `sources`, numbered like format_context()."""
+    return [source_label(doc, i) for i, doc in enumerate(docs, start=1)]
 
 
 def _canonical_id(doc: Document, retriever_label: str, rank: int) -> str:
@@ -180,35 +244,140 @@ def filter_by_relevance(
     docs: List[Document],
     min_score: float = MIN_RRF_SCORE,
     min_retriever_count: int = MIN_RETRIEVER_CORROBORATION,
+    max_distance: Optional[float] = MAX_SEMANTIC_DISTANCE,
 ) -> List[Document]:
     """
     Drop fused documents that don't meet the coarse relevance bar (reads
-    the `_rrf_score` / `_retriever_count` metadata reciprocal_rank_fusion()
-    stamps onto each result). With the default thresholds (0.0 / 0) this
-    is a no-op — every fused document passes, since neither threshold has
-    been calibrated against real query data yet (see proposal: calibrate
-    empirically against a small eval set of answerable / weakly-related /
-    out-of-scope queries, rather than picking a number arbitrarily).
+    the `_rrf_score` / `_retriever_count` / `_semantic_distance` metadata
+    stamped during retrieval and fusion). With the defaults (0.0 / 0 / None)
+    this is a no-op — none of the thresholds have been calibrated against
+    labeled queries yet, so none is enforced.
 
-    Docs missing the fusion metadata (e.g. hand-built Documents in a test,
-    or a future retriever wired in without going through
-    reciprocal_rank_fusion()) are treated as passing by default, not
-    silently dropped.
+    `max_distance` only ever drops a chunk that the semantic retriever found
+    alone (retriever_count < 2): a chunk BM25 also surfaced is kept however
+    far its embedding is.
+
+    Docs missing the metadata (hand-built Documents in a test, a future
+    retriever) are treated as passing, not silently dropped.
     """
     survivors = []
     for doc in docs:
         score = doc.metadata.get("_rrf_score", float("inf"))
         count = doc.metadata.get("_retriever_count", min_retriever_count)
-        if score >= min_score and count >= min_retriever_count:
+        distance = doc.metadata.get("_semantic_distance")
+        too_far = (
+            max_distance is not None
+            and distance is not None
+            and distance > max_distance
+            and count < 2
+        )
+        if score >= min_score and count >= min_retriever_count and not too_far:
             survivors.append(doc)
 
     dropped = len(docs) - len(survivors)
     if dropped:
         print(
             f"🚫 [Relevance] dropped {dropped} doc(s) below coarse threshold "
-            f"(min_score={min_score}, min_retriever_count={min_retriever_count})"
+            f"(min_score={min_score}, min_retriever_count={min_retriever_count}, "
+            f"max_distance={max_distance})"
         )
     return survivors
+
+
+# ── BM25 (sparse) retrieval ──────────────────────────────────────────────
+# Previously rebuilt from every chunk in Chroma on EVERY query, ignored
+# year_filter, tokenized with str.split() (case- and punctuation-sensitive:
+# "RMC" != "rmc", "34-2024?" != "34-2024"), and — via get_top_n — returned k
+# arbitrary documents even when the query shared no terms with the corpus.
+
+_TOKEN_RE = re.compile(r"\w+(?:-\w+)*", re.UNICODE)
+
+
+def tokenize(text: str) -> List[str]:
+    """
+    Lowercased word tokens; hyphenated tokens are kept whole AND split, so
+    an issuance number like "34-2024" matches "34-2024" and bare "2024".
+    """
+    tokens: List[str] = []
+    for m in _TOKEN_RE.finditer((text or "").lower()):
+        tok = m.group(0)
+        tokens.append(tok)
+        if "-" in tok:
+            tokens.extend(tok.split("-"))
+    return tokens
+
+
+class _BM25Index:
+    def __init__(self, docs: List[Document]):
+        self.docs = docs
+        self.bm25 = BM25Okapi([tokenize(d.page_content) for d in docs]) if docs else None
+
+    def search(self, query: str, k: int, year: Optional[str] = None) -> List[Document]:
+        """
+        Top-k documents with a POSITIVE BM25 score (no term overlap -> none),
+        optionally restricted to one year category.
+
+        Scores always come from the FULL-corpus index and the year is applied
+        afterwards to the ranking. A per-year index would compute term
+        weights from only a handful of chunks (2001 has ~1 page), and BM25's
+        IDF goes to zero/negative on tiny corpora — every score would be
+        non-positive and nothing would ever match.
+        """
+        query_tokens = tokenize(query)
+        if self.bm25 is None or not query_tokens:
+            return []
+        scores = self.bm25.get_scores(query_tokens)
+        candidates = [
+            i for i in range(len(scores))
+            if year is None or self.docs[i].metadata.get("year") == year
+        ]
+        ranked = sorted(candidates, key=lambda i: scores[i], reverse=True)[:k]
+        results = []
+        for i in ranked:
+            if scores[i] <= 0:
+                break
+            meta = dict(self.docs[i].metadata)
+            meta["_bm25_score"] = float(scores[i])
+            results.append(Document(page_content=self.docs[i].page_content, metadata=meta))
+        return results
+
+
+_bm25_lock = threading.Lock()
+_bm25_state = {"key": None, "index": None}
+
+
+def _get_bm25_index(db: Chroma) -> _BM25Index:
+    """
+    Return the cached full-corpus BM25 index, rebuilding only when the set
+    of chunk ids in Chroma changes (re-ingest, upload, reset). Checking that
+    costs one ids-only fetch; the full text fetch and index build happen
+    once per index state instead of once per query.
+    """
+    ids = db.get(include=[])["ids"]
+    key = (len(ids), hash(tuple(sorted(ids))))
+    with _bm25_lock:
+        if _bm25_state["key"] != key:
+            data = db.get(include=["documents", "metadatas"])
+            docs = [
+                Document(page_content=text, metadata=meta or {})
+                for text, meta in zip(data["documents"], data["metadatas"])
+            ]
+            _bm25_state.update(key=key, index=_BM25Index(docs))
+            print(f"🗂️  [BM25] index built: {len(docs)} chunk(s)")
+        return _bm25_state["index"]
+
+
+def _semantic_search(
+    db: Chroma, query: str, k: int, year_filter: Optional[str]
+) -> List[Document]:
+    """Chroma search that keeps each hit's distance in metadata["_semantic_distance"]."""
+    kwargs = {"filter": {"year": year_filter}} if year_filter else {}
+    results = []
+    for doc, distance in db.similarity_search_with_score(query, k=k, **kwargs):
+        meta = dict(doc.metadata)
+        meta["_semantic_distance"] = float(distance)
+        results.append(Document(page_content=doc.page_content, metadata=meta))
+    return results
 
 
 def retrieve_docs(
@@ -222,39 +391,30 @@ def retrieve_docs(
 ) -> List[Document]:
     """
     Hybrid retrieval: run dense (Chroma semantic) and sparse (BM25)
-    retrieval independently, then fuse their rankings with
-    `reciprocal_rank_fusion()`.
+    retrieval independently — BOTH restricted to `year_filter` when one is
+    given — then fuse their rankings with `reciprocal_rank_fusion()`.
+
+    year_filter is only ever set from an explicit, in-corpus year/citation
+    in the query (see classifier.get_year_filter), so applying it to BM25
+    too can't hard-exclude the right chunks on an ML misguess the way the
+    old classifier-driven filter could.
 
     A failure in either retriever is caught and logged; it degrades to
-    whatever the other retriever found rather than raising, so one bad
-    call to Chroma or a corrupt BM25 index doesn't take down the whole
-    `/query` request.
+    whatever the other retriever found rather than raising.
     """
-    # ── Dense / semantic retrieval (Chroma) ──────────────────────────
     semantic_results: List[Document] = []
     try:
-        if year_filter:
-            semantic_results = db.similarity_search(
-                query, k=semantic_top_k, filter={"year": year_filter}
-            )
-        else:
-            semantic_results = db.similarity_search(query, k=semantic_top_k)
+        semantic_results = _semantic_search(db, query, semantic_top_k, year_filter)
+        if semantic_results:
+            dists = ", ".join(f"{d.metadata['_semantic_distance']:.3f}" for d in semantic_results)
+            print(f"📏 [Semantic] distances (best first): {dists}")
     except Exception as e:
         print(f"⚠️  [Retrieval] semantic search failed, continuing without it: {e}")
         semantic_results = []
 
-    # ── Sparse / keyword retrieval (BM25) ────────────────────────────
     bm25_results: List[Document] = []
     try:
-        all_data = db.get(include=["documents", "metadatas"])
-        if all_data["documents"]:
-            all_docs = [
-                Document(page_content=text, metadata=meta)
-                for text, meta in zip(all_data["documents"], all_data["metadatas"])
-            ]
-            bm25_retriever = BM25Retriever.from_documents(all_docs)
-            bm25_retriever.k = bm25_top_k
-            bm25_results = bm25_retriever.invoke(query)
+        bm25_results = _get_bm25_index(db).search(query, bm25_top_k, year=year_filter)
     except Exception as e:
         print(f"⚠️  [Retrieval] BM25 search failed, continuing without it: {e}")
         bm25_results = []
@@ -270,7 +430,6 @@ def retrieve_docs(
         source_labels=["semantic", "bm25"],
     )
 
-    # Coarse relevance pre-filter — see filter_by_relevance()'s docstring.
     # An empty return here (same as the "0 results" case above) is what
     # api.py treats as "insufficient evidence" and routes to a localized
     # no-answer response instead of generation.

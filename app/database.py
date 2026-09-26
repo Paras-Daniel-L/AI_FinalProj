@@ -9,7 +9,8 @@ from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from .embeddings import get_embedding_function
+from .embeddings import check_index_compatible, get_embedding_function, write_index_config
+from .ocr import choose_page_text, unavailable_reason
 
 load_dotenv()
 
@@ -110,17 +111,39 @@ def load_documents():
             continue
 
         empty_sources = set()
+        ocr_new = ocr_replaced = 0
         for doc in docs:
             doc.metadata["year"] = category
+            # Scanned pages: no text layer -> OCR; a poor hidden text layer on
+            # a full-page scan -> OCR and keep the cleaner text. Cached on disk
+            # by file hash, so --reset doesn't redo the work. See app/ocr.py.
+            text, how = choose_page_text(
+                doc.metadata.get("source", ""),
+                int(doc.metadata.get("page", 0)),
+                doc.page_content,
+            )
+            if how != "layer":
+                doc.page_content = text
+                doc.metadata["ocr"] = True
+                if how == "ocr":
+                    ocr_new += 1
+                else:
+                    ocr_replaced += 1
             if not doc.page_content.strip():
                 empty_sources.add(doc.metadata.get("source", "?"))
 
         print(f"     ✅ {len(docs)} page(s) tagged as year='{category}'")
+        if ocr_new:
+            print(f"     🔍 {ocr_new} scanned page(s) with no text read via OCR (may contain misread characters)")
+        if ocr_replaced:
+            print(f"     🔍 {ocr_replaced} scanned page(s) had a poor hidden text layer — replaced with OCR text")
         if empty_sources:
+            why = unavailable_reason()
             print(
-                f"     🚫 {len(empty_sources)} file(s) produced NO extractable text "
-                f"(almost certainly scanned/image PDFs — they will index as empty, "
-                f"unsearchable chunks until OCR'd):"
+                f"     🚫 {len(empty_sources)} file(s) still have pages with NO text "
+                f"(scanned/blank; they index as nothing until OCR succeeds"
+                + (f" — OCR unavailable: {why}" if why else "")
+                + "):"
             )
             for src in sorted(empty_sources):
                 print(f"         - {src}")
@@ -163,11 +186,18 @@ def add_to_chroma(chunks: list[Document]):
     existing_ids    = set(db.get(include=[])["ids"])
     print(f"📦 Existing documents in DB: {len(existing_ids)}")
 
+    # Refuse to mix vectors made with different embedding settings (e.g. an
+    # index built before Jina task adapters were used) — see embeddings.py.
+    problem = check_index_compatible(CHROMA_PATH, bool(existing_ids))
+    if problem:
+        raise RuntimeError(problem)
+
     new_chunks = [c for c in chunks_with_ids if c.metadata["id"] not in existing_ids]
 
     if new_chunks:
         print(f"👉 Adding new documents: {len(new_chunks)}")
         db.add_documents(new_chunks, ids=[c.metadata["id"] for c in new_chunks])
+        write_index_config(CHROMA_PATH)
         print("✅ Database updated successfully.")
     else:
         print("✅ No new documents to add.")

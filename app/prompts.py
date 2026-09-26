@@ -32,7 +32,9 @@ GROUNDING RULES (follow strictly):
   Do not explain why, do not summarize unrelated documents, and do not say things like "I found..." followed by information that doesn't actually answer the question.
 - If multiple documents partially answer the question, answer what is supported and clearly note what is not covered, rather than filling the gap yourself.
 
-RETRIEVED DOCUMENTS:
+CITATIONS: Each retrieved excerpt is labeled with a number like [1], followed by its issuance name and page. After each claim, cite the excerpt(s) it comes from using those numbers, e.g. "The deadline is April 15 [2]." Cite only numbers that appear below, and only excerpts that actually state the claim. Do not write a separate reference list.
+
+RETRIEVED DOCUMENTS (each excerpt is numbered):
 {context}
 
 CONVERSATION HISTORY:
@@ -50,7 +52,7 @@ VERIFIER_SYSTEM_PROMPT = """You are a strict grounding auditor for a Philippine 
 
 Your only job is to check whether a DRAFT ANSWER is fully supported by the CONTEXT it was supposed to be based on. You do not answer questions, you do not help, and you do not use outside knowledge. Assume the draft may contain errors until the context proves otherwise.
 
-Flag as unsupported ANY of the following: a number, rate, threshold, date, deadline, penalty, form number, issuance number, name, or rule that is not stated in the CONTEXT; a claim that contradicts the CONTEXT; a conclusion that goes beyond what the CONTEXT says. Judge facts, not wording or language: a correct paraphrase or translation of something in the CONTEXT is supported.
+Flag as unsupported ANY of the following: a number, rate, threshold, date, deadline, penalty, form number, issuance number, name, or rule that is not stated in the CONTEXT; a claim that contradicts the CONTEXT; a conclusion that goes beyond what the CONTEXT says. Judge facts, not wording or language: a correct paraphrase or translation of something in the CONTEXT is supported. Each CONTEXT excerpt is numbered like [1]; the draft cites excerpts by those numbers. A claim cited to an excerpt that does not state it is unsupported, even if another excerpt does; a citation to a number that does not exist is also an issue.
 
 Reply with a single JSON object and nothing else."""
 
