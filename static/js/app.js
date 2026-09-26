@@ -101,7 +101,6 @@ async function sendMessage(query) {
       role: 'assistant',
       content: data.answer,
       classification: data.classification,
-      predicted_class: data.predicted_class,
       mode: data.mode,
       sources: data.sources || [],
     };
@@ -113,7 +112,6 @@ async function sendMessage(query) {
       role: 'assistant',
       content: `**Error:** ${err.message}\n\nPlease check your connection or backend server.`,
       classification: 'Error',
-      predicted_class: -1,
       mode: 'error',
       sources: [],
     };
@@ -155,8 +153,17 @@ function appendBotBubble(msg) {
   const row = document.createElement('div');
   row.className = 'flex flex-col items-start gap-space-xs self-start max-w-3xl w-full';
 
-  // Format mode label (RAG vs Conv vs Error)[cite: 3]
-  const modeLabel = msg.mode === 'rag' ? 'Verified RAG Synthesis' : msg.mode === 'error' ? 'Error' : 'Conversational';
+  // Header badge + footer chip per response mode. There is no open-domain /
+  // "Direct LLM" path anymore: a response is a verified RAG answer, a
+  // refusal (no supporting evidence), a fixed greeting, or an error.
+  const MODE_LABELS = {
+    rag:       { badge: 'Verified RAG Synthesis', chip: 'RAG Processed' },
+    no_answer: { badge: 'No Supported Answer',    chip: 'Refused (no evidence)' },
+    greeting:  { badge: 'Greeting',               chip: 'Fixed Reply' },
+    error:     { badge: 'Error',                  chip: 'Error' },
+  };
+  const modeInfo = MODE_LABELS[msg.mode] || MODE_LABELS.error;
+  const modeLabel = modeInfo.badge;
   const parsedContent = typeof marked !== 'undefined' ? marked.parse(msg.content || '') : msg.content;
 
   // Build the sources accordion if sources exist
@@ -203,7 +210,7 @@ function appendBotBubble(msg) {
     
     <div class="flex items-center gap-space-xs mt-space-2xs pl-space-xs">
       <span class="font-label-sm text-label-sm px-space-md py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed font-medium shadow-sm">
-        ${msg.mode === 'rag' ? 'RAG Processed' : 'Direct LLM'}
+        ${modeInfo.chip}
       </span>
       <span class="font-label-sm text-label-sm px-space-md py-1 rounded-full bg-secondary-container text-on-secondary-fixed font-medium shadow-sm">
         ${msg.classification || 'General Context'}

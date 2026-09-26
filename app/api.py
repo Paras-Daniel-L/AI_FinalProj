@@ -20,7 +20,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from langchain_chroma import Chroma
 
-from .classifier import build_classifier, classify_query
+from .classifier import NO_SOURCES_LABEL, get_year_filter, label_from_docs
 from .database import add_to_chroma, clear_database, load_documents, split_documents
 from .embeddings import get_embedding_function
 from .greetings import is_greeting
@@ -51,10 +51,6 @@ STATIC_DIR = Path(__file__).parent.parent / "static"
 # Serves /static/css/style.css and /static/js/app.js referenced by index.html.
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# ── Train classifier once at startup ──────────────────────────────────────────
-classifier_model = build_classifier(model_type="naive_bayes")
-
-
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _greeting_response(lang: LanguageResult) -> QueryResponse:
@@ -65,23 +61,19 @@ def _greeting_response(lang: LanguageResult) -> QueryResponse:
 
     Sagot AI has no general-knowledge/open-domain conversation mode
     anymore (see prompts.SYSTEM_PROMPT) — this exists only so a plain
-    "hello" doesn't come back as a no-answer refusal. predicted_class is
-    -1 as a sentinel: the classifier never runs for this path, so there
-    is no real class index to report.
+    "hello" doesn't come back as a no-answer refusal.
+    Routing and retrieval never run for this path.
     """
     return QueryResponse(
         answer=get_greeting_message(lang.label),
         sources=[],
         classification="Greeting",
-        predicted_class=-1,
         mode="greeting",
         language=lang.label,
     )
 
 
-def _no_answer_response(
-    body: QueryRequest, label: str, predicted_class: int, lang: LanguageResult
-) -> QueryResponse:
+def _no_answer_response(lang: LanguageResult) -> QueryResponse:
     """
     A tax query for which the knowledge base has no supporting evidence —
     either the DB is empty, retrieval found nothing, or nothing survived
@@ -92,8 +84,7 @@ def _no_answer_response(
     return QueryResponse(
         answer=get_no_answer_message(lang.label),
         sources=[],
-        classification=label,
-        predicted_class=int(predicted_class),
+        classification=NO_SOURCES_LABEL,
         mode="no_answer",
         language=lang.label,
     )
@@ -128,9 +119,10 @@ def get_status():
 def query_endpoint(body: QueryRequest):
     """
     Grounded BIR-tax RAG endpoint. No general-knowledge fallback exists:
-    every non-greeting query is classified (for year routing, see
-    classifier.py) then answered strictly from retrieved documents, or
-    refused via the canned no-answer response.
+    every non-greeting query is routed (explicit-year filter, see
+    classifier.py), retrieved, labeled from the retrieved documents'
+    own metadata, then answered strictly from those documents or refused
+    via the canned no-answer response.
     """
     if not body.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
@@ -143,20 +135,16 @@ def query_endpoint(body: QueryRequest):
         lang = detect_language(body.query)
 
         # Step 1: Bare greeting ("hi", "kumusta ka") -> fixed reply, no LLM
-        # call, no classifier call. Checked BEFORE classification because
-        # every class in classifier.py is now a real BIR tax year/FAQ
-        # bucket — there is no "class 0 means chit-chat" special case to
-        # branch on anymore (that used to be predicted_class == 0; a
-        # greeting today would just get force-classified into whichever
-        # tax-year class its wording is TF-IDF-closest to, which is not
-        # meaningful for a 2-word greeting). Anything with real content
-        # attached to a greeting-looking prefix does NOT match here and
-        # falls through to normal classification below.
+        # call, no retrieval. Anything with real content attached to a
+        # greeting-looking prefix does NOT match here and falls through to
+        # the normal pipeline below.
         if is_greeting(body.query):
             return _greeting_response(lang)
 
-        # Step 2: Classify (year routing — separate concern from language).
-        predicted_class, label, year_filter = classify_query(classifier_model, body.query)
+        # Step 2: Route (year filter from an explicit year/citation in the
+        # query, or None for whole-corpus search). Rule-based; the
+        # classification LABEL is derived later, from what retrieval found.
+        year_filter = get_year_filter(body.query)
 
         # Step 3: Knowledge query -> try RAG. An empty/unreachable DB means
         # there is no evidence to ground an answer in, so this returns a
@@ -168,7 +156,7 @@ def query_endpoint(body: QueryRequest):
             db_empty, db = True, None
 
         if db_empty or db is None:
-            return _no_answer_response(body, label, predicted_class, lang)
+            return _no_answer_response(lang)
 
         # Step 4: Retrieve documents (RRF-fused, then coarse-relevance
         # filtered — see retrieve_docs()/filter_by_relevance() in
@@ -177,7 +165,11 @@ def query_endpoint(body: QueryRequest):
         combined = retrieve_docs(body.query, year_filter, db)
 
         if not combined:
-            return _no_answer_response(body, label, predicted_class, lang)
+            return _no_answer_response(lang)
+
+        # Step 4b: Label the query from the retrieved evidence — which
+        # corpus categories (year folders / faq) the chunks came from.
+        label = label_from_docs(combined)
 
         # Step 5: RAG answer with retrieved context, in the user's language.
         # rag_answer() itself may return the canned no-answer message (the
@@ -188,21 +180,13 @@ def query_endpoint(body: QueryRequest):
         answer = rag_answer(body.query, body.history, context_text, language=lang)
 
         if answer == get_no_answer_message(lang.label):
-            return QueryResponse(
-                answer=answer,
-                sources=[],
-                classification=label,
-                predicted_class=int(predicted_class),
-                mode="no_answer",
-                language=lang.label,
-            )
+            return _no_answer_response(lang)
 
         sources = [doc.metadata.get("id", "unknown") for doc in combined]
         return QueryResponse(
             answer=answer,
             sources=sources,
             classification=label,
-            predicted_class=int(predicted_class),
             mode="rag",
             language=lang.label,
         )

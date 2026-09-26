@@ -22,8 +22,7 @@ class QueryRequest(BaseModel):
 class QueryResponse(BaseModel):
     answer: str
     sources: list[str]
-    classification: str
-    predicted_class: int
+    classification: str   # source categories of the retrieved chunks, e.g. "BIR Tax Query (Source Year: 2024)"
     mode: str          # "rag" | "no_answer" | "greeting"
     language: Optional[str] = None   # "english" | "filipino" | "taglish"
 
