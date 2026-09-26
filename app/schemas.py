@@ -24,7 +24,7 @@ class QueryResponse(BaseModel):
     sources: list[str]
     classification: str
     predicted_class: int
-    mode: str          # "rag" | "conversational" | "no_answer"
+    mode: str          # "rag" | "no_answer" | "greeting"
     language: Optional[str] = None   # "english" | "filipino" | "taglish"
 
 
