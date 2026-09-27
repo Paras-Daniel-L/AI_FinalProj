@@ -25,6 +25,7 @@ from .classifier import NO_SOURCES_LABEL, get_year_filter, label_from_docs
 from .database import add_to_chroma, clear_database, load_documents, split_documents
 from .embeddings import check_index_compatible, get_embedding_function
 from .greetings import is_greeting
+from .guard import guard_middleware
 from .language import LanguageResult, detect_language
 from .llm import rag_answer
 from .prompts import get_greeting_message, get_no_answer_message
@@ -35,6 +36,10 @@ from .schemas import QueryRequest, QueryResponse, StatusResponse
 load_dotenv()
 
 app = FastAPI(title="Sagot AI API", version="2.0.0")
+
+# Public-sharing guard: per-IP rate limit, daily cap, /upload+/reset locked to
+# the host computer (see app/guard.py).
+app.middleware("http")(guard_middleware)
 
 app.add_middleware(
     CORSMiddleware,

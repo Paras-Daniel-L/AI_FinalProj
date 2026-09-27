@@ -1,8 +1,8 @@
 # modified rag-tutorial-v2 by pixegami and williamagyapong
 """
-RAG Chatbot API  –  TaxAI
-Run with: uvicorn main:app --reload --port 8000
-http://localhost:8000
+RAG Chatbot API  –  SagotAI
+uvicorn main:app --host 127.0.0.1 --port 8000.
+ngrok http 8000 --url https://utmost-bride-wasting.ngrok-free.dev
 
 Requirements:
     1. pip install fastapi uvicorn python-multipart
