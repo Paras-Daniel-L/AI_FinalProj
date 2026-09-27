@@ -24,6 +24,13 @@ Needed once the app is exposed through a tunnel (ngrok / Cloudflare Tunnel):
 2. /query is limited per visitor IP per minute, and there is one global daily
    cap, so a shared link cannot drain the OpenRouter/Jina credits.
 
+3. The evaluation tool (/eval, rag_eval/web.py) is readable by anyone, but
+   its RUN endpoints (/eval/api/run...) make paid model calls (the chatbot,
+   the judge, Jina) with no per-visitor limit, so they get the same
+   host-computer lock as the admin routes. Present from the host computer
+   at http://localhost:8000/eval to run tests; visitors on the public link
+   can still read the guide and the thesis results.
+
 Visitor IP: the tunnel appends the address it actually saw to the END of
 X-Forwarded-For. Anything before it was written by the visitor and can be
 faked, so the LAST entry is used. CF-Connecting-IP is only trusted when
@@ -34,6 +41,7 @@ Env vars (all optional):
     RATE_LIMIT_PER_MIN      queries per IP per minute           (default 6)
     DAILY_QUERY_CAP         queries per day, all visitors       (default 100)
     ADMIN_LOCAL_ONLY        1 = lock /upload,/reset to this computer (default 1)
+    EVAL_LOCAL_ONLY         1 = lock /eval/api/run... to this computer (default 1)
     TRUST_CF_CONNECTING_IP  1 = use Cloudflare's CF-Connecting-IP (default 0)
 State is in memory: it resets when the server restarts.
 
@@ -61,9 +69,11 @@ def _flag(name: str, default: str) -> bool:
 RATE_LIMIT_PER_MIN = int(os.environ.get("RATE_LIMIT_PER_MIN", "6"))
 DAILY_QUERY_CAP = int(os.environ.get("DAILY_QUERY_CAP", "100"))
 ADMIN_LOCAL_ONLY = _flag("ADMIN_LOCAL_ONLY", "1")
+EVAL_LOCAL_ONLY = _flag("EVAL_LOCAL_ONLY", "1")
 TRUST_CF_CONNECTING_IP = _flag("TRUST_CF_CONNECTING_IP", "0")
 
 ADMIN_PATHS = ("/upload", "/reset")
+EVAL_RUN_PREFIX = "/eval/api/run"
 _PROXY_HEADERS = (
     "cf-connecting-ip", "x-forwarded-for", "x-real-ip", "forwarded", "cf-ray",
     "x-forwarded-host", "cf-visitor",
@@ -122,6 +132,17 @@ def is_cross_site(request: Request) -> bool:
     return False
 
 
+def is_host_request(request: Request) -> bool:
+    """Straight from this computer's own browser/tools: no tunnel, not cross-site."""
+    return not (is_public(request) or is_cross_site(request))
+
+
+def can_run_evaluations(request: Request) -> bool:
+    """What rag_eval/web.py reports to the page, so it can explain the lock
+    instead of letting a visitor fill in a form that will be refused."""
+    return (not EVAL_LOCAL_ONLY) or is_host_request(request)
+
+
 def _prune(now: float) -> None:
     """Drop IPs with no queries in the last minute (at most once a minute)."""
     if now - _last_prune["t"] < 60:
@@ -143,6 +164,12 @@ async def guard_middleware(request: Request, call_next):
         if is_public(request) or is_cross_site(request):
             print(f"🛡️  [Guard] blocked admin request to {path} from {client_ip(request)}")
             return _blocked(403, "This action is only available on the host computer.")
+
+    if EVAL_LOCAL_ONLY and path.startswith(EVAL_RUN_PREFIX):
+        if not is_host_request(request):
+            print(f"🛡️  [Guard] blocked evaluation run {path} from {client_ip(request)}")
+            return _blocked(403, "Running evaluations is only available on the host computer "
+                                 "(open http://localhost:8000/eval there).")
 
     if path == "/query" and request.method == "POST":
         today = date.today()

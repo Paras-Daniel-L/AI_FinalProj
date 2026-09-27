@@ -237,7 +237,7 @@ function appendBotBubble(msg) {
       <div class="w-8 h-8 rounded-lg bg-secondary-container flex items-center justify-center shadow-sm">
         <span class="font-label-md text-label-md text-on-secondary-fixed font-bold">T</span>
       </div>
-      <span class="font-code-citation text-code-citation text-on-surface">Sagot AI • Just Now</span>
+      <span class="font-code-citation text-code-citation text-on-surface">TaxSight PH • Just Now</span>
       <span class="font-label-sm text-label-sm bg-surface-container px-2 py-0.5 rounded-full text-secondary">${modeLabel}</span>
     </div>
     

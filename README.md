@@ -123,8 +123,13 @@ thesisFinal/
 │
 ├── static/
 │   ├── index.html        the chat UI
+│   ├── eval.html         the evaluation tool (/eval) — see section 12
 │   ├── js/app.js
-│   └── css/style.css
+│   ├── js/eval.js        the evaluation tool's behaviour
+│   ├── css/style.css
+│   └── css/eval.css      the evaluation tool's styles
+│
+├── rag_eval/                      thesis evaluation (RAGAS metrics, statistics, /eval API) — section 12
 │
 ├── data/                          the corpus, NOT committed to git
 │   ├── 2001/ … 2026/              one folder per source year
@@ -552,3 +557,54 @@ python -m app.cache --clear
 python -m app.trace
 python -m app.trace --last 5
 ```
+
+---
+
+## 12. The evaluation tool (thesis evaluation)
+
+A second page, served by the same server, that scores chatbot answers with the thesis metrics. Open it from the **Evaluation** button in the chatbot's header (it opens in the same tab; **Back to chatbot** returns you, but an ongoing chat is cleared), or go straight to <http://localhost:8000/eval>.
+
+**One-time setup** (on top of section 3):
+
+```powershell
+pip install -r rag_eval/requirements.txt
+```
+
+and in `.env`, a judge model that is **not** the generator or the verifier (the system must not grade itself):
+
+```
+JUDGE_MODEL=openai/gpt-4o-mini
+```
+
+If the extras aren't installed, the chatbot still starts and only `/eval` is missing (a warning is printed).
+
+**The four data points.** Every evaluation uses a *question*, the *context* (document excerpts the chatbot read), the chatbot's *answer*, and a *ground truth* (the correct answer, written from the official document). For Sagot AI, context and answer are produced automatically (it is asked live, cache skipped). For another chatbot such as REVIE, you paste its answer; REVIE shows no context, so its Groundedness and Context Relevance are shown as "—" with the reason, never as 0. An optional *expected language* (english / taglish) feeds the language-trigger scores.
+
+**Scores.** Groundedness, Context Relevance and Answer Relevance (the SOP's three RAGAS metrics); Answer Correctness (supplementary: the only score that uses the ground truth, and the fair Sagot AI vs. REVIE comparison); Trigger Precision, Trigger Recall and False Positive Rate (Sagot AI's language detector, over a package). The **How it works** tab explains each one in plain language.
+
+| Tab | What it does |
+|---|---|
+| How it works | The four data points and every score, explained for a non-technical reader |
+| Test one question | Sagot AI, another chatbot, or both side by side. "Fill with a thesis example" loads any T-TED question |
+| Test a package | Upload a CSV/JSON (download the template from the page) or load the T-TED dataset; runs in the background with progress and a Cancel button; averages, trigger scores, paired statistics, per-question drill-down, CSV download. Runs are saved in `rag_eval/results/web_runs/` and can be reopened |
+| Thesis results | RQ1 / RQ2 / RQ3, computed live from the offline run's checkpoint (below) |
+
+**Cost and the public link.** Every test makes paid model calls (chatbot + judge + Jina), so the run buttons only work on the host computer (`localhost`). Visitors on the ngrok link can read the guide and the thesis results but cannot start tests (`EVAL_LOCAL_ONLY=1`, the default). Only one package test runs at a time, and a one-call preflight checks the judge before any chatbot call.
+
+**The offline thesis run** (what the Thesis results tab reads):
+
+```powershell
+python -m rag_eval.run_evaluation --subset A --limit 4   # smoke test
+python -m rag_eval.run_evaluation --subset all           # full run; re-run the same command to resume
+python -m rag_eval.run_evaluation --rq2-only             # RQ2 only, free
+```
+
+Results: `rag_eval/results/summary.json`, `scores_flat.csv`, `raw_scores.json`. Every answer is checkpointed in `rag_eval/results/checkpoint.jsonl` as soon as it is scored; a crash never means paying again. When the way answers are scored changes (a new metric), re-running re-scores the saved answers without calling the chatbot again.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `JUDGE_MODEL` | *(required)* | OpenRouter model id of the independent judge |
+| `JUDGE_DISABLE_THINKING` | `0` | `1` only if the judge is a reasoning model |
+| `JUDGE_ANSWER_QUESTIONS` | `3` | Questions generated per answer for Answer Relevance |
+| `EVAL_LOCAL_ONLY` | `1` | Lock the run buttons to the host computer |
+| `EVAL_MAX_BATCH_ROWS` | `200` | Largest package accepted |

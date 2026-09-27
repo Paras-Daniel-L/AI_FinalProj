@@ -147,7 +147,12 @@ def _api_key() -> str:
     return key
 
 
-def _extra_body(provider_order: Optional[List[str]]) -> Dict[str, Any]:
+def _extra_body(provider_order: Optional[List[str]], thinking_off: Optional[bool] = None) -> Dict[str, Any]:
+    """`thinking_off` None = use LLM_DISABLE_THINKING (every production call).
+    False is for a NON-reasoning model (e.g. the evaluation judge): such a
+    model has no "reasoning" parameter, and with require_parameters on,
+    OpenRouter would refuse to route the call at all (HTTP 404 "No endpoints
+    found that can handle the requested parameters")."""
     raw = os.environ.get("LLM_EXTRA_BODY", "").strip()
     if raw:
         try:
@@ -160,7 +165,7 @@ def _extra_body(provider_order: Optional[List[str]]) -> Dict[str, Any]:
 
     body: Dict[str, Any] = {}
     if _IS_OPENROUTER:
-        if DISABLE_THINKING:
+        if DISABLE_THINKING if thinking_off is None else thinking_off:
             body["reasoning"] = {"enabled": False}
             body["provider"] = {"require_parameters": True}
         if provider_order:
@@ -199,8 +204,10 @@ def chat(
     max_tokens: int,
     provider_order: Optional[List[str]] = None,
     role: str = "llm",
+    thinking_off: Optional[bool] = None,
 ) -> ChatResult:
-    """One chat completion. Raises LLMError on failure."""
+    """One chat completion. Raises LLMError on failure. `thinking_off`: see
+    _extra_body() — leave None everywhere except for a non-reasoning model."""
     key = _api_key()
     payload: Dict[str, Any] = {
         "model": model,
@@ -211,7 +218,7 @@ def chat(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
-    payload.update(_extra_body(provider_order))
+    payload.update(_extra_body(provider_order, thinking_off))
     headers = {
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
