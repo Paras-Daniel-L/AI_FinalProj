@@ -15,7 +15,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from langchain_chroma import Chroma
@@ -41,13 +40,10 @@ app = FastAPI(title="Sagot AI API", version="2.0.0")
 # the host computer (see app/guard.py).
 app.middleware("http")(guard_middleware)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# No CORS middleware on purpose: the UI is served by this same server, so the
+# browser never needs cross-origin permission. The old allow_origins=["*"]
+# let any website's scripts call this API (including /reset) from the
+# owner's own browser.
 
 CHROMA_PATH = "chroma"
 DATA_PATH   = "data"

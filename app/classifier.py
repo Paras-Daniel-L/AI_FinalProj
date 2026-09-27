@@ -55,26 +55,33 @@ def extract_explicit_year(query: str) -> Optional[str]:
        pattern every issuance number in this corpus uses. Unambiguous by
        construction: if "14-2023" is in the query, the year is 2023.
 
-    2. A bare year mention with nothing else competing for it, e.g.
-       "2001 tax deadline", "nung 2023" — exactly one KNOWN_YEARS year
-       appears anywhere in the query and no citation matched. It backs off
-       to None the moment a SECOND distinct year also appears (e.g. "yung
-       2025 ruling, still valid ba ngayong 2026?", or a range like
-       "2024-2025") rather than picking one arbitrarily — unfiltered search
-       still has both years available to it.
+    2. A bare year mention, e.g. "2001 tax deadline", "nung 2023".
 
-    Returns None — not a guess — when neither tier fires, or when a year
-    is found but isn't in KNOWN_YEARS: a filter that can only ever match
-    zero documents is strictly worse than no filter.
+    A filter is applied only when the query points at exactly ONE year.
+    It backs off to None the moment a SECOND distinct year appears
+    anywhere — another citation ("RR 2-2003 as amended by RR 5-2025"), a
+    citation plus a bare year ("RMC 34-2024, still valid in 2026?"), two
+    bare years ("yung 2025 ruling, valid pa ba ngayong 2026?") or a range
+    ("2024-2025"). Filtering on one of them would hide the other year's
+    documents, often the amending issuance; unfiltered search still has
+    both available.
+
+    Years counted: every citation year (even one not in the corpus — a
+    question about "RR 5-2019 as amended by RR 3-2024" is about two years)
+    plus bare years that ARE in KNOWN_YEARS (a bare "2050" is more likely
+    an amount than a year, so it is ignored).
+
+    Returns None — not a guess — when no year is found, when the years
+    conflict, or when the single year isn't in KNOWN_YEARS: a filter that
+    can only ever match zero documents is strictly worse than no filter.
     """
-    for m in _ISSUANCE_YEAR_RE.finditer(query):
-        year = m.group(1)
+    citation_years = {m.group(1) for m in _ISSUANCE_YEAR_RE.finditer(query)}
+    bare_years = {y for y in _BARE_YEAR_RE.findall(query) if y in KNOWN_YEARS}
+    years = citation_years | bare_years
+    if len(years) == 1:
+        year = next(iter(years))
         if year in KNOWN_YEARS:
             return year
-
-    bare_years = {y for y in _BARE_YEAR_RE.findall(query) if y in KNOWN_YEARS}
-    if len(bare_years) == 1:
-        return next(iter(bare_years))
     return None
 
 
@@ -92,7 +99,7 @@ def get_year_filter(query: str) -> Optional[str]:
     if year:
         print(f"📅 [Year Filter Applied]: {year}  (explicit year in query)")
     else:
-        print("📅 [Year Filter]: none — searching the whole corpus")
+        print("📅 [Year Filter]: none — searching the whole corpus (no single in-corpus year)")
     return year
 
 
