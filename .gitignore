@@ -10,3 +10,4 @@ ocr_cache
 data
 __pycache__
 cache
+logs

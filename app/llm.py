@@ -13,7 +13,9 @@ grounded, retrieval-anchored one below.
 import json
 import os
 import re
-from typing import List, Optional, Tuple
+import time
+from dataclasses import asdict, dataclass, field
+from typing import Any, Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
 
@@ -138,15 +140,32 @@ def _find_verdict_object(text: str) -> Optional[dict]:
     return found
 
 
-def _parse_verdict(raw: str) -> Tuple[bool, str]:
+# Verdict kinds, kept apart because they mean different things in the thesis:
+# UNSUPPORTED = the verifier found a problem (a "catch"); UNPARSEABLE = the
+# verifier failed to answer in the required format (a verifier failure, not
+# evidence that the draft was wrong). Both still fail closed.
+VERDICT_SUPPORTED = "SUPPORTED"
+VERDICT_UNSUPPORTED = "UNSUPPORTED"
+VERDICT_SUPPORTED_WITH_ISSUES = "SUPPORTED_WITH_ISSUES"
+VERDICT_UNPARSEABLE = "UNPARSEABLE"
+
+
+@dataclass
+class Verdict:
+    passed: bool
+    kind: str                  # one of the VERDICT_* values above
+    critique: str = ""         # joined issues ("" when passed)
+    issues: List[str] = field(default_factory=list)
+
+
+def parse_verdict(raw: str) -> Verdict:
     """
-    Parse the verifier's JSON reply into (passed, critique).
+    Parse the verifier's JSON reply.
 
     Fail-closed: anything other than a well-formed object whose "verdict" is
-    exactly "SUPPORTED" (case-insensitive) is a FAIL — malformed JSON, a
-    missing key, "UNSUPPORTED", or free text like "NOT VERIFIED". The old
-    `"VERIFIED" in text.upper()` check passed all of the latter.
-    A "SUPPORTED" verdict that still lists issues is also a fail.
+    exactly "SUPPORTED" (case-insensitive) with no issues is a FAIL — malformed
+    JSON, a missing key, "UNSUPPORTED", or free text like "NOT VERIFIED". The
+    old `"VERIFIED" in text.upper()` check passed all of the latter.
     Thinking text (<think>...</think>, or an unclosed <think> block) is
     ignored, and the last verdict object wins.
     """
@@ -157,20 +176,33 @@ def _parse_verdict(raw: str) -> Tuple[bool, str]:
     text = _UNCLOSED_THINK_RE.sub("", text).strip()
     data = _find_verdict_object(text)
     if data is None:
-        return False, _NO_VERDICT
+        return Verdict(False, VERDICT_UNPARSEABLE, _NO_VERDICT)
 
     issues = data.get("issues") or []
     if isinstance(issues, str):
         issues = [issues]
-    critique = "; ".join(str(i) for i in issues) or "Some claims are not supported by the context."
+    if not isinstance(issues, list):
+        issues = [str(issues)]
+    issues = [str(i) for i in issues]
+    critique = "; ".join(issues) or "Some claims are not supported by the context."
 
     verdict = str(data.get("verdict", "")).strip().upper()
-    if verdict == "SUPPORTED" and not issues:
-        return True, ""
-    return False, critique
+    if verdict == "SUPPORTED":
+        if not issues:
+            return Verdict(True, VERDICT_SUPPORTED, "", [])
+        return Verdict(False, VERDICT_SUPPORTED_WITH_ISSUES, critique, issues)
+    if verdict == "UNSUPPORTED":
+        return Verdict(False, VERDICT_UNSUPPORTED, critique, issues)
+    return Verdict(False, VERDICT_UNPARSEABLE, f"Unknown verdict {verdict!r}. {critique}", issues)
 
 
-def _verify(context_text: str, draft: str) -> Tuple[bool, str]:
+def _parse_verdict(raw: str) -> Tuple[bool, str]:
+    """Old (passed, critique) form, kept for any code that still calls it."""
+    v = parse_verdict(raw)
+    return v.passed, v.critique
+
+
+def _verify(context_text: str, draft: str) -> Tuple[Verdict, llm_client.ChatResult]:
     """Audit `draft` against `context_text` with the dedicated auditor persona,
     running on VERIFIER_MODEL (a different model from the generator)."""
     result = _chat(
@@ -182,7 +214,185 @@ def _verify(context_text: str, draft: str) -> Tuple[bool, str]:
         providers=VERIFIER_PROVIDERS,
         role="verifier",
     )
-    return _parse_verdict(result.text)
+    return parse_verdict(result.text), result
+
+
+# ── Structured result (what happened, for evaluation) ────────────────────
+#
+# Outcomes of run_rag():
+#   verified             a draft passed verification on attempt n (returned)
+#   generator_no_answer  the generator replied NO_ANSWER (canned refusal)
+#   verification_failed  no attempt passed within MAX_RAG_RETRIES (canned refusal)
+#   error                a model call failed (LLMError etc.); see `error`
+#
+# Attempt statuses:
+#   supported     verifier approved the draft
+#   rejected      verifier said UNSUPPORTED, or SUPPORTED but listed issues
+#   unparseable   verifier reply had no usable verdict (format failure)
+#   no_answer     generator replied NO_ANSWER (not verified — nothing to check)
+#   empty         generator reply was empty (not verified)
+#   truncated     generator reply hit the output cap (not verified)
+#   error         the call raised; `error` on the result says why
+
+OUTCOME_VERIFIED = "verified"
+OUTCOME_GENERATOR_NO_ANSWER = "generator_no_answer"
+OUTCOME_VERIFICATION_FAILED = "verification_failed"
+OUTCOME_ERROR = "error"
+
+
+@dataclass
+class Attempt:
+    number: int                              # 1-based
+    status: str                              # see "Attempt statuses" above
+    audit_notice: str = ""                   # feedback given to the generator for THIS attempt
+    draft: str = ""                          # full generator reply (unverified unless status == supported)
+    generator: Optional[Dict[str, Any]] = None   # ChatResult.meta() of the generator call
+    verdict: Optional[str] = None            # VERDICT_* kind, if the verifier ran
+    issues: List[str] = field(default_factory=list)
+    critique: str = ""
+    verifier_raw: Optional[str] = None       # full verifier reply, if it ran
+    verifier: Optional[Dict[str, Any]] = None    # ChatResult.meta() of the verifier call
+
+
+@dataclass
+class RagResult:
+    outcome: str                             # OUTCOME_* value
+    answer: str                              # what the user sees (draft or canned refusal)
+    language: str                            # language label used for the answer
+    attempts: List[Attempt] = field(default_factory=list)
+    max_attempts: int = MAX_RAG_RETRIES
+    error: Optional[str] = None
+    latency_ms: int = 0
+
+    @property
+    def verified(self) -> bool:
+        return self.outcome == OUTCOME_VERIFIED
+
+    @property
+    def calls(self) -> List[Dict[str, Any]]:
+        out = []
+        for a in self.attempts:
+            out += [m for m in (a.generator, a.verifier) if m]
+        return out
+
+    @property
+    def cost(self) -> Optional[float]:
+        """Sum of reported costs (None if the API reported none)."""
+        costs = [c["cost"] for c in self.calls if isinstance(c.get("cost"), (int, float))]
+        return round(sum(costs), 8) if costs else None
+
+    def to_dict(self) -> Dict[str, Any]:
+        d = asdict(self)
+        d["n_attempts"] = len(self.attempts)
+        d["n_calls"] = len(self.calls)
+        d["cost"] = self.cost
+        d["models"] = {"generator": GENERATOR_MODEL, "verifier": VERIFIER_MODEL}
+        return d
+
+
+def run_rag(
+    query: str,
+    history: List[ConvMessage],
+    context_text: str,
+    language: Optional[LanguageResult] = None,
+    max_retries: int = MAX_RAG_RETRIES,
+) -> RagResult:
+    """
+    Generate an answer grounded in the retrieved context, verify it with a
+    DIFFERENT model, retry up to `max_retries` times, and report everything
+    that happened as a RagResult (outcome, every draft, every verdict, and
+    which host served each call). Never raises: a failing model call becomes
+    outcome "error" with the attempts made so far.
+
+    Design rules (unchanged from earlier sessions):
+
+    1. Language: detected ONCE, before the loop; `query` is never mutated.
+       The verifier's critique goes to the next attempt as a separate
+       `audit_notice` section, never glued onto the question (an English
+       critique next to the question pushed answers toward English).
+    2. Grounding: the generator replies exactly NO_ANSWER when the excerpts
+       don't support an answer; the user then gets a fixed, localized refusal,
+       never the model's own refusal text.
+    3. Fail-closed verification: every draft (including the last) is audited
+       by the verifier (near-zero temperature, JSON verdict). If no attempt is
+       SUPPORTED, the canned refusal is returned — never an unverified draft.
+       Empty or cut-off drafts are never verified or returned.
+    """
+    started = time.monotonic()
+    lang = language or detect_language(query)
+    refusal = get_no_answer_message(lang.label)
+    history_str = format_history(history)
+    result = RagResult(OUTCOME_VERIFICATION_FAILED, refusal, lang.label, max_attempts=max_retries)
+    audit_notice = ""
+
+    def done(outcome: str, answer: str) -> RagResult:
+        result.outcome, result.answer = outcome, answer
+        result.latency_ms = int((time.monotonic() - started) * 1000)
+        return result
+
+    for number in range(1, max_retries + 1):
+        attempt = Attempt(number=number, status="error", audit_notice=audit_notice.strip())
+        result.attempts.append(attempt)
+        try:
+            prompt = RAG_PROMPT.format(
+                user_language=lang.display_name,
+                no_answer_sentinel=NO_ANSWER_SENTINEL,
+                context=context_text,
+                history=history_str,
+                audit_notice=audit_notice,
+                question=query,  # always the ORIGINAL question — never mutated
+            )
+            gen = _chat(
+                prompt, SYSTEM_PROMPT, GENERATION_TEMPERATURE, GENERATOR_MODEL,
+                GENERATOR_MAX_TOKENS, GENERATOR_PROVIDERS, "generator",
+            )
+            attempt.generator = gen.meta()
+            attempt.draft = draft = gen.text
+
+            if _is_no_answer(draft):
+                attempt.status = "no_answer"
+                print(f"🙅 [Generator] attempt {number}/{max_retries}: NO_ANSWER")
+                return done(OUTCOME_GENERATOR_NO_ANSWER, refusal)
+
+            # An empty draft has no claims, so a verifier could "support" it; a
+            # draft cut off by the output cap is an incomplete answer. Neither
+            # may be returned — count it as a failed attempt and try again.
+            if not draft.strip() or gen.truncated:
+                attempt.status = "empty" if not draft.strip() else "truncated"
+                why = "empty" if attempt.status == "empty" else "cut off for being too long"
+                print(f"⚠️  [LLM] generator reply was {why}; retrying.")
+                audit_notice = (
+                    f"\n[AUDIT NOTICE — the previous reply was {why}. Write a "
+                    "complete, concise answer in the user's language, citing "
+                    "excerpt numbers, using only facts from the excerpts]\n"
+                )
+                continue
+
+            verdict, ver = _verify(context_text, draft)
+            attempt.verifier = ver.meta()
+            attempt.verifier_raw = ver.text
+            attempt.verdict, attempt.issues, attempt.critique = verdict.kind, verdict.issues, verdict.critique
+
+            if verdict.passed:
+                attempt.status = "supported"
+                print(f"✅ [Verifier] attempt {number}/{max_retries}: supported")
+                return done(OUTCOME_VERIFIED, draft)
+
+            attempt.status = "unparseable" if verdict.kind == VERDICT_UNPARSEABLE else "rejected"
+            print(f"❌ [Verifier] attempt {number}/{max_retries}: {attempt.status} — {verdict.critique}")
+            audit_notice = (
+                "\n[AUDIT NOTICE — a prior attempt failed grounding verification "
+                "with this critique; fix the issue below without changing your "
+                f"answer's language or inventing new facts]: {verdict.critique}\n"
+            )
+        except Exception as e:  # LLMError, network, anything: record, stop, fail closed
+            attempt.status = "error"
+            result.error = f"{type(e).__name__}: {e}"
+            print(f"💥 [LLM] attempt {number}/{max_retries} failed: {result.error}")
+            return done(OUTCOME_ERROR, refusal)
+
+    # Fail closed: every attempt failed, so no draft is trustworthy.
+    return done(OUTCOME_VERIFICATION_FAILED, refusal)
 
 
 def rag_answer(
@@ -192,91 +402,10 @@ def rag_answer(
     language: Optional[LanguageResult] = None,
     max_retries: int = MAX_RAG_RETRIES,
 ) -> str:
-    """
-    Generate an answer grounded in retrieved document context, with an
-    automated verification/retry loop and a language-anchored, grounding-
-    enforced prompt.
-
-    Two fixes versus the previous version:
-
-    1. Language: detected ONCE from the ORIGINAL `query`, before the retry
-       loop starts, and `query` itself is never mutated. The previous
-       implementation appended the verification critique directly onto
-       `query` on retry (`current_query = f"{query}\\n\\nNote: ..."`), which
-       silently pushed the model toward English regardless of what
-       language the user actually asked in, since the critique text is
-       always English and sits as the most recent text before the answer.
-       Here the critique is passed as a separate `audit_notice` prompt
-       section instead — the question text, and its language, stay intact
-       across every attempt.
-
-    2. Grounding: the model is instructed (via RAG_PROMPT) to reply with
-       exactly NO_ANSWER when the retrieved context doesn't support an
-       answer. This function detects that sentinel and substitutes a
-       fixed, localized refusal — the model's raw output on the no-answer
-       path is never returned to the caller, so wording is deterministic
-       and no unrelated retrieved content can leak through.
-
-    3. Verification is fail-closed: every draft (including the last) is
-       audited by a separate, near-zero-temperature auditor call returning a
-       JSON verdict, run on a DIFFERENT model (VERIFIER_MODEL) than the
-       generator (GENERATOR_MODEL). If no attempt is verified as SUPPORTED
-       (up to MAX_RAG_RETRIES attempts), the canned refusal is returned —
-       never an unverified draft.
-    """
-    lang = language or detect_language(query)
-    history_str = format_history(history)
-    audit_notice = ""
-
-    for _attempt in range(max_retries):
-        prompt = RAG_PROMPT.format(
-            user_language=lang.display_name,
-            no_answer_sentinel=NO_ANSWER_SENTINEL,
-            context=context_text,
-            history=history_str,
-            audit_notice=audit_notice,
-            question=query,  # always the ORIGINAL question — never mutated
-        )
-        result = _chat(
-            prompt, SYSTEM_PROMPT, GENERATION_TEMPERATURE, GENERATOR_MODEL,
-            GENERATOR_MAX_TOKENS, GENERATOR_PROVIDERS, "generator",
-        )
-        draft = result.text
-
-        if _is_no_answer(draft):
-            return get_no_answer_message(lang.label)
-
-        # An empty draft has no claims, so a verifier could "support" it; a
-        # draft cut off by the output cap is an incomplete answer. Neither may
-        # be returned — count it as a failed attempt and try again.
-        if not draft.strip() or result.truncated:
-            why = "empty" if not draft.strip() else "cut off for being too long"
-            print(f"⚠️  [LLM] generator reply was {why}; retrying.")
-            audit_notice = (
-                f"\n[AUDIT NOTICE — the previous reply was {why}. Write a "
-                "complete, concise answer in the user's language, citing "
-                "excerpt numbers, using only facts from the excerpts]\n"
-            )
-            continue
-
-        # EVERY draft is verified before it can be returned — including the
-        # last attempt (the old code returned the final draft unverified).
-        passed, critique = _verify(context_text, draft)
-        if passed:
-            print(f"✅ [Verifier] attempt {_attempt + 1}/{max_retries}: supported")
-            return draft
-        print(f"❌ [Verifier] attempt {_attempt + 1}/{max_retries}: rejected — {critique}")
-
-        # Feed the critique back as its OWN labeled prompt section — never
-        # glued onto `query` — so the question text (and the language
-        # signal derived from it) is identical on every attempt.
-        audit_notice = (
-            "\n[AUDIT NOTICE — a prior attempt failed grounding verification "
-            "with this critique; fix the issue below without changing your "
-            f"answer's language or inventing new facts]: {critique}\n"
-        )
-
-    # Fail closed: every attempt failed verification, so no draft is
-    # trustworthy. Return the canned refusal (api.py maps it to mode
-    # "no_answer") rather than an unverified, possibly hallucinated answer.
-    return get_no_answer_message(lang.label)
+    """Old interface: just the answer text (a verified draft or the canned
+    refusal). Raises if a model call failed, as before. New code should call
+    run_rag(), which says WHICH of those happened."""
+    result = run_rag(query, history, context_text, language, max_retries)
+    if result.outcome == OUTCOME_ERROR:
+        raise llm_client.LLMError(result.error or "model call failed")
+    return result.answer

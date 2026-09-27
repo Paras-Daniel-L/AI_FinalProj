@@ -33,6 +33,15 @@ Settings (env vars; only the key is required):
                          REPLACES the built-in reasoning/provider fields — use
                          it for a non-OpenRouter endpoint that needs a
                          different "thinking off" switch.
+    LLM_ALLOW_FALLBACKS  default 1. Only matters when GENERATOR_PROVIDERS /
+                         VERIFIER_PROVIDERS pin hosts: 1 = OpenRouter may use
+                         another host if the pinned ones fail; 0 = only the
+                         pinned hosts (use 0 for evaluation runs, so every
+                         answer is known to come from the same host).
+
+Every result records which host actually served it (OpenRouter's "provider"
+field), the generation id (look it up on openrouter.ai/activity), latency and
+how many HTTP tries it took, so a thesis run can report exactly what ran.
 """
 
 import json
@@ -51,6 +60,7 @@ BASE_URL: str = os.environ.get("LLM_BASE_URL", "https://openrouter.ai/api/v1").r
 REQUEST_TIMEOUT: float = float(os.environ.get("LLM_TIMEOUT", "90"))
 MAX_RETRIES: int = int(os.environ.get("LLM_MAX_RETRIES", "3"))
 DISABLE_THINKING: bool = os.environ.get("LLM_DISABLE_THINKING", "1").strip() not in ("0", "false", "False", "")
+ALLOW_FALLBACKS: bool = os.environ.get("LLM_ALLOW_FALLBACKS", "1").strip() not in ("0", "false", "False", "")
 _IS_OPENROUTER: bool = "openrouter.ai" in BASE_URL
 
 
@@ -66,6 +76,26 @@ class ChatResult:
     completion_tokens: int = 0
     reasoning_tokens: int = 0
     cost: Optional[float] = None
+    model: str = ""                      # model id the API says it ran
+    provider: Optional[str] = None       # host that served it (OpenRouter "provider")
+    generation_id: Optional[str] = None  # OpenRouter id, for openrouter.ai/activity
+    latency_ms: int = 0                  # wall time of the successful HTTP request
+    http_attempts: int = 1               # 1 = first try worked; more = retried
+
+    def meta(self) -> Dict[str, Any]:
+        """Everything except the text, for traces/logs."""
+        return {
+            "model": self.model,
+            "provider": self.provider,
+            "generation_id": self.generation_id,
+            "finish_reason": self.finish_reason,
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "reasoning_tokens": self.reasoning_tokens,
+            "cost": self.cost,
+            "latency_ms": self.latency_ms,
+            "http_attempts": self.http_attempts,
+        }
 
     @property
     def truncated(self) -> bool:
@@ -135,7 +165,7 @@ def _extra_body(provider_order: Optional[List[str]]) -> Dict[str, Any]:
             body["provider"] = {"require_parameters": True}
         if provider_order:
             body.setdefault("provider", {}).update(
-                {"order": list(provider_order), "allow_fallbacks": True}
+                {"order": list(provider_order), "allow_fallbacks": ALLOW_FALLBACKS}
             )
     return body
 
@@ -192,6 +222,7 @@ def chat(
     last_error = "unknown error"
     for attempt in range(MAX_RETRIES + 1):
         resp: Optional[requests.Response] = None
+        started = time.monotonic()
         try:
             resp = requests.post(url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT)
         except (requests.ConnectionError, requests.Timeout) as e:
@@ -233,12 +264,15 @@ def chat(
                 continue
             raise LLMError(f"Unexpected response from the model API: {_error_message(body, status)} (model {model})")
 
-        return _parse(body, model, role)
+        latency_ms = int((time.monotonic() - started) * 1000)
+        return _parse(body, model, role, latency_ms=latency_ms, http_attempts=attempt + 1)
 
     raise LLMError(f"Model call failed after {MAX_RETRIES + 1} attempts: {last_error} (model {model})")
 
 
-def _parse(body: Dict[str, Any], model: str, role: str) -> ChatResult:
+def _parse(
+    body: Dict[str, Any], model: str, role: str, latency_ms: int = 0, http_attempts: int = 1
+) -> ChatResult:
     choice = body["choices"][0]
     message = choice.get("message") or {}
     content = message.get("content") or ""
@@ -254,14 +288,23 @@ def _parse(body: Dict[str, Any], model: str, role: str) -> ChatResult:
         completion_tokens=int(usage.get("completion_tokens") or 0),
         reasoning_tokens=int(details.get("reasoning_tokens") or 0),
         cost=usage.get("cost") if isinstance(usage.get("cost"), (int, float)) else None,
+        model=str(body.get("model") or model),
+        provider=body.get("provider") if isinstance(body.get("provider"), str) else None,
+        generation_id=body.get("id") if isinstance(body.get("id"), str) else None,
+        latency_ms=latency_ms,
+        http_attempts=http_attempts,
     )
     _record(model, result)
 
-    line = f"💸 [LLM:{role}] {model} in={result.prompt_tokens} out={result.completion_tokens}"
+    host = f" via {result.provider}" if result.provider else ""
+    line = f"💸 [LLM:{role}] {model}{host} in={result.prompt_tokens} out={result.completion_tokens}"
     if result.reasoning_tokens:
         line += f" reasoning={result.reasoning_tokens}"
     if result.cost is not None:
         line += f" cost=${result.cost:.5f}"
+    line += f" {latency_ms / 1000:.1f}s"
+    if http_attempts > 1:
+        line += f" (after {http_attempts} tries)"
     print(line)
 
     thinking_seen = result.reasoning_tokens > 0 or bool(message.get("reasoning"))
