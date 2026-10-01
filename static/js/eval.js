@@ -1,4 +1,4 @@
-/* TaxSight PH · Evaluation tool (static/eval.html).
+/* SagotAI · Evaluation tool (static/eval.html).
  *
  * Talks only to rag_eval/web.py (/eval/api/...). Every string that came from
  * a user, a chatbot or the judge is escaped (esc) or, for chatbot answers
