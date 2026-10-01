@@ -1,0 +1,802 @@
+[
+ {
+  "qid": "A1-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "Do online sellers need to display a BIR Registration Seal Badge on their shop profiles or websites?",
+  "expected_answer": "Yes. The BIR prescribes the mandatory issuance and posting of the BIR Registration Seal Badge on online websites, e-commerce platforms, and e-marketplace seller or merchant pages.",
+  "revie_response": "Yes, online sellers should display the BIR Registration Seal Badge on their business website or online shop page.",
+  "source": "RMC No. 38-2026"
+ },
+ {
+  "qid": "A1-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "Kailangan bang mag-display ng BIR Registration Seal Badge ang mga online seller sa kanilang shop profile o website?",
+  "expected_answer": "Oo. Itinakda ng BIR ang mandatory na pag-issue at pag-post ng BIR Registration Seal Badge sa mga online website, e-commerce platform, at seller o merchant page sa e-marketplace.",
+  "revie_response": "Oo, dapat ipakita ng mga online seller ang BIR Registration Seal Badge sa kanilang website o online shop page.",
+  "source": "RMC No. 38-2026"
+ },
+ {
+  "qid": "A2-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "Is offshore gaming or POGO now completely banned and illegal in the Philippines?",
+  "expected_answer": "Yes. Republic Act No. 12312 officially bans and declares illegal all offshore gaming operations in the Philippines.",
+  "revie_response": "POGOs remain fully legal and operational in the Philippines. Under PAGCOR Memorandum Circular No. 4-2023, they simply pay an additional 5% regulatory fee on top of their existing franchise tax.",
+  "source": "RMC No. 13-2026"
+ },
+ {
+  "qid": "A2-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "Bawal at ilegal na ba talaga ang offshore gaming o POGO sa Pilipinas ngayon?",
+  "expected_answer": "Oo. Opisyal na ipinagbabawal at idinedeklarang ilegal ng Republic Act No. 12312 ang lahat ng offshore gaming operations sa Pilipinas.",
+  "revie_response": "Legal at gumagana pa rin ang POGO sa Pilipinas. Ayon sa PAGCOR Memorandum Circular No. 4-2023, magbabayad lamang sila ng dagdag na 5% regulatory fee sa ibabaw ng kanilang franchise tax.",
+  "source": "RMC No. 13-2026"
+ },
+ {
+  "qid": "A3-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "Are digital services like video streaming and online platforms subject to Value-Added Tax?",
+  "expected_answer": "Yes. Republic Act No. 12023 amended Section 105 of the National Internal Revenue Code to explicitly include the sale and supply of digital services under Value-Added Tax (VAT).",
+  "revie_response": "Value-Added Tax in the Philippines is currently set at twelve percent (12%), and it generally applies to the sale of goods, properties, and services nationwide.",
+  "source": "RMC No. 126-2024"
+ },
+ {
+  "qid": "A3-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "May Value-Added Tax ba na ipinapataw sa mga digital services tulad ng video streaming at online platforms?",
+  "expected_answer": "Oo. Inamyendahan ng Republic Act No. 12023 ang Section 105 ng National Internal Revenue Code para tahasang isama ang pagbebenta at supply ng digital services sa Value-Added Tax (VAT).",
+  "revie_response": "Ang Value-Added Tax sa Pilipinas ay kasalukuyang nasa labindalawang porsyento (12%), at karaniwang ipinapataw ito sa pagbebenta ng mga produkto, ari-arian, at serbisyo sa buong bansa.",
+  "source": "RMC No. 126-2024"
+ },
+ {
+  "qid": "A4-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "How much is the excise tax imposed on locally manufactured perfumes and toilet waters?",
+  "expected_answer": "The excise tax is twenty percent (20%) based on the wholesale price, net of Excise Tax and Value-Added Tax (VAT).",
+  "revie_response": "The excise tax on locally manufactured perfumes and toilet waters is ten percent (10%) of the net retail price, as fixed under RR No. 2-2019 and unchanged since then.",
+  "source": "RR No. 9-2023"
+ },
+ {
+  "qid": "A4-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "Magkano ang ipinapataw na excise tax sa mga pabango at toilet water na gawa rito sa Pilipinas?",
+  "expected_answer": "Dalawampung porsyento (20%) ang excise tax, batay sa wholesale price na bawas ang Excise Tax at Value-Added Tax (VAT).",
+  "revie_response": "Sampung porsyento (10%) ang excise tax sa mga lokal na gawang pabango at toilet water, batay sa net retail price, ayon sa RR No. 2-2019 na hindi pa nababago.",
+  "source": "RR No. 9-2023"
+ },
+ {
+  "qid": "A5-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "What is the annual gross sales limit to qualify as a Micro Taxpayer under the Ease of Paying Taxes Act?",
+  "expected_answer": "A Micro Taxpayer is defined as a taxpayer whose gross sales for a taxable year is less than Three Million Pesos (₱3,000,000).",
+  "revie_response": "A Micro Taxpayer is a taxpayer whose annual gross sales are up to Three Million Pesos (₱3,000,000).",
+  "source": "RR No. 8-2024"
+ },
+ {
+  "qid": "A5-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "Ano ang limitasyon sa taunang gross sales para maituring na Micro Taxpayer sa ilalim ng Ease of Paying Taxes Act?",
+  "expected_answer": "Ang Micro Taxpayer ay taxpayer na ang gross sales sa isang taxable year ay mas mababa sa Tatlong Milyong Piso (₱3,000,000).",
+  "revie_response": "Ang Micro Taxpayer ay ang taxpayer na may taunang gross sales na hanggang Tatlong Milyong Piso (₱3,000,000).",
+  "source": "RR No. 8-2024"
+ },
+ {
+  "qid": "A6-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "Can taxpayers verify a Letter of Authority (LOA) through the BIR's Chatbot REVIE?",
+  "expected_answer": "Yes. RMC No. 5-2026 launched a new feature in the BIR's Chatbot REVIE called the Letter of Authority (LOA) Verifier, which gives taxpayers a reliable and secure mechanism to verify an LOA.",
+  "revie_response": "Yes, through the LOA Verifier in Chatbot REVIE. Just enter your TIN, name, and LOA Case Number to check if your Letter of Authority is valid.",
+  "source": "RMC No. 5-2026"
+ },
+ {
+  "qid": "A6-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "Pwede bang i-verify ng mga taxpayer ang Letter of Authority (LOA) gamit ang Chatbot REVIE ng BIR?",
+  "expected_answer": "Oo. Inilunsad ng RMC No. 5-2026 ang bagong feature sa Chatbot REVIE ng BIR na tinatawag na Letter of Authority (LOA) Verifier, na nagbibigay sa mga taxpayer ng maaasahan at secure na paraan para i-verify ang isang LOA.",
+  "revie_response": "Oo, sa pamamagitan ng LOA Verifier sa Chatbot REVIE. Ilagay lang ang TIN, pangalan, at LOA Case Number para malaman kung valid ang inyong Letter of Authority.",
+  "source": "RMC No. 5-2026"
+ },
+ {
+  "qid": "A7-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "Will e-marketplace operators deduct withholding tax from remittances to their online sellers?",
+  "expected_answer": "Yes. E-marketplace operators must impose a creditable withholding tax of 1% on one-half (50%) of the gross remittances made to sellers, provided their annual gross remittances exceed ₱500,000.",
+  "revie_response": "Withholding tax is a system where the payor deducts and remits a portion of the tax due on behalf of the payee, in accordance with the rates prescribed under the Tax Code.",
+  "source": "RR No. 16-2023 / RMC No. 8-2024"
+ },
+ {
+  "qid": "A7-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "Magkakaltas ba ng withholding tax ang mga e-marketplace operator sa mga ibinabayad sa kanilang online sellers?",
+  "expected_answer": "Oo. Dapat magkaltas ang mga e-marketplace operator ng creditable withholding tax na 1% sa kalahati (50%) ng gross remittances sa mga seller, basta lumampas sa ₱500,000 ang kanilang taunang gross remittances.",
+  "revie_response": "Ang withholding tax ay isang sistema kung saan ang nagbabayad ang siyang nagkakaltas at nagre-remit ng bahagi ng buwis sa ngalan ng tumatanggap, alinsunod sa mga rate na itinakda sa ilalim ng Tax Code.",
+  "source": "RR No. 16-2023 / RMC No. 8-2024"
+ },
+ {
+  "qid": "A8-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "Has the BIR established a mandatory floor price for selling cigarettes and vape products?",
+  "expected_answer": "Yes. The BIR set and updated specific minimum floor prices for cigarettes, heated tobacco, and vaporized nicotine and non-nicotine products.",
+  "revie_response": "Yes, the BIR has set a mandatory floor price of ₱50 per pack for cigarettes and ₱150 per unit for vape products.",
+  "source": "RMC No. 49-2023"
+ },
+ {
+  "qid": "A8-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "Nagtakda ba ang BIR ng opisyal na pinakamababang presyo o floor price sa pagbenta ng sigarilyo at vape?",
+  "expected_answer": "Oo. Nagtakda at nag-update ang BIR ng specific na minimum floor prices para sa sigarilyo, heated tobacco, at vaporized nicotine at non-nicotine products.",
+  "revie_response": "Oo, nagtakda ang BIR ng mandatory floor price na ₱50 kada pakete ng sigarilyo at ₱150 kada yunit ng vape product.",
+  "source": "RMC No. 49-2023"
+ },
+ {
+  "qid": "A9-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "What are the rules for donor's tax on donations consisting purely of cash?",
+  "expected_answer": "Donations consisting purely of cash are subject to donor's tax rules based on cumulative donations made during the calendar year, requiring the proper filing of the return and documentation.",
+  "revie_response": "Cash donations are generally exempt from donor's tax as long as they total less than ₱500,000 per donor per calendar year and are given to a qualified relative, per BIR Form 1800 instructions.",
+  "source": "RMC No. 10-2026"
+ },
+ {
+  "qid": "A9-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "Ano ang mga panuntunan sa donor's tax para sa mga donasyon na binubuo lamang ng purong cash?",
+  "expected_answer": "Ang mga donasyong purong cash ay sakop ng donor's tax rules batay sa cumulative donations na ginawa sa loob ng calendar year, at kailangan ang tamang pag-file ng return at documentation.",
+  "revie_response": "Karaniwang exempt sa donor's tax ang cash donations basta ang kabuuan ay mas mababa sa ₱500,000 kada donor kada calendar year at ibinigay sa isang kwalipikadong kamag-anak, ayon sa BIR Form 1800.",
+  "source": "RMC No. 10-2026"
+ },
+ {
+  "qid": "A10-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "Does the cross-border doctrine still apply to ecozones for VAT zero-rating purposes?",
+  "expected_answer": "No. The cross-border doctrine has been rendered ineffectual by the CREATE Act. Local purchases are only zero-rated if directly and exclusively used in the registered project or activity of a registered export enterprise.",
+  "revie_response": "VAT zero-rated transactions are taxed at a rate of zero percent (0%) instead of the standard 12%, and this generally applies to export sales and other transactions considered effectively international under the Tax Code.",
+  "source": "RMC No. 24-2022"
+ },
+ {
+  "qid": "A10-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "Umiiral pa ba ang cross-border doctrine para sa VAT zero-rating sa loob ng mga ecozone?",
+  "expected_answer": "Hindi na. Nawalan ng bisa ang cross-border doctrine dahil sa CREATE Act. Zero-rated lamang ang local purchases kung direkta at eksklusibong ginagamit sa rehistradong project o activity ng isang registered export enterprise.",
+  "revie_response": "Ang mga VAT zero-rated na transaksyon ay pinapataw ng zero porsyentong (0%) VAT sa halip na karaniwang 12%, at karaniwan itong ipinapataw sa mga export sales at iba pang transaksyong ituturing na effectively international sa ilalim ng Tax Code.",
+  "source": "RMC No. 24-2022"
+ },
+ {
+  "qid": "A11-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "Can a taxpayer claim an output VAT credit for uncollected receivables under the Ease of Paying Taxes Act?",
+  "expected_answer": "Yes. Taxpayers can claim an Output VAT Credit on uncollected receivables for sales made on account, provided the seller previously remitted the corresponding VAT to the BIR.",
+  "revie_response": "Yes, taxpayers may claim an output VAT credit on any uncollected receivable regardless of whether the corresponding VAT was previously remitted to the BIR.",
+  "source": "RMC No. 65-2024"
+ },
+ {
+  "qid": "A11-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "Pwede bang mag-claim ng output VAT credit ang taxpayer sa mga hindi nakolektang utang sa ilalim ng Ease of Paying Taxes Act?",
+  "expected_answer": "Oo. Maaaring mag-claim ang taxpayer ng Output VAT Credit sa uncollected receivables para sa mga benta on account, basta naibayad na dati ng seller sa BIR ang kaukulang VAT.",
+  "revie_response": "Oo, maaaring mag-claim ang taxpayer ng output VAT credit sa kahit anong uncollected receivable, kahit hindi pa naibayad ang kaukulang VAT sa BIR.",
+  "source": "RMC No. 65-2024"
+ },
+ {
+  "qid": "A12-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "Has the BIR resumed its field audits and tax investigations in 2026?",
+  "expected_answer": "Yes. RMC No. 8-2026 officially lifted the suspension and resumed all tax audits and field operations.",
+  "revie_response": "No, the BIR has extended the suspension of field audits and tax investigations until the end of 2026.",
+  "source": "RMC No. 8-2026"
+ },
+ {
+  "qid": "A12-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "Ipinagpatuloy na ba ng BIR ang kanilang field audit at tax investigations ngayong 2026?",
+  "expected_answer": "Oo. Opisyal na inalis ng RMC No. 8-2026 ang suspensyon at ipinagpatuloy ang lahat ng tax audits at field operations.",
+  "revie_response": "Hindi, pinalawig ng BIR ang suspensyon ng field audit at tax investigations hanggang katapusan ng 2026.",
+  "source": "RMC No. 8-2026"
+ },
+ {
+  "qid": "A13-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "Are electric distribution utilities required to include third-party pass-through charges in their gross sales?",
+  "expected_answer": "No. Gross sales of distribution utilities and electric cooperatives exclude VAT and amounts earmarked for or reimbursed to third parties.",
+  "revie_response": "Yes, distribution utilities and electric cooperatives must include all third-party pass-through charges, such as universal charges and system loss, as part of their taxable gross sales.",
+  "source": "RMC No. 116-2024"
+ },
+ {
+  "qid": "A13-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "Kailangan bang isama ng mga distribution utility sa kuryente ang mga third-party pass-through charges sa kanilang gross sales?",
+  "expected_answer": "Hindi. Hindi kasama sa gross sales ng distribution utilities at electric cooperatives ang VAT at ang mga halagang earmarked para sa o ni-reimburse sa third parties.",
+  "revie_response": "Oo, kailangang isama ng mga distribution utility at electric cooperative ang lahat ng third-party pass-through charges, tulad ng universal charge at system loss, sa kanilang taxable gross sales.",
+  "source": "RMC No. 116-2024"
+ },
+ {
+  "qid": "A14-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "Which law grants fiscal incentives for the development of natural gas facilities in the Philippines?",
+  "expected_answer": "Republic Act No. 12120, known as the Philippine Natural Gas Industry Development Act.",
+  "revie_response": "Republic Act No. 11371, otherwise known as the Philippine Downstream Natural Gas Industry Act, signed into law on March 8, 2023, grants these fiscal incentives.",
+  "source": "RMC No. 11-2025 / RR No. 2-2026"
+ },
+ {
+  "qid": "A14-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "Anong batas ang nagbibigay ng fiscal incentives para sa pagpapatayo ng mga natural gas facilities sa Pilipinas?",
+  "expected_answer": "Ang Republic Act No. 12120, na kilala bilang Philippine Natural Gas Industry Development Act.",
+  "revie_response": "Republic Act No. 11371, o ang Philippine Downstream Natural Gas Industry Act, na nilagdaan noong Marso 8, 2023, ang nagbibigay ng mga fiscal incentives na ito.",
+  "source": "RMC No. 11-2025 / RR No. 2-2026"
+ },
+ {
+  "qid": "A15-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "When must PAGCOR licensees file the franchise tax return and pay the franchise tax to the BIR?",
+  "expected_answer": "The franchise tax return (BIR Form 2553, ATC OT 010) must be filed and the 5% franchise tax paid within twenty-five (25) days after the end of each taxable quarter. The tax is payable directly to the BIR, specifically to the Revenue District Office where the licensee is registered.",
+  "revie_response": "PAGCOR licensees must file BIR Form 2553 and pay the 5% franchise tax within twenty (20) days after the end of each taxable quarter, payable at the PAGCOR head office.",
+  "source": "RMC No. 52-2022"
+ },
+ {
+  "qid": "A15-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "Kailan dapat mag-file ng franchise tax return at magbayad ng franchise tax sa BIR ang mga PAGCOR licensee?",
+  "expected_answer": "Ang franchise tax return (BIR Form 2553, ATC OT 010) ay dapat i-file at ang 5% franchise tax ay dapat bayaran sa loob ng dalawampu't limang (25) araw pagkatapos ng katapusan ng bawat taxable quarter. Direktang binabayaran ang buwis sa BIR, partikular sa Revenue District Office kung saan rehistrado ang licensee.",
+  "revie_response": "Dapat i-file ng mga PAGCOR licensee ang BIR Form 2553 at bayaran ang 5% franchise tax sa loob ng dalawampung (20) araw pagkatapos ng bawat taxable quarter, babayaran sa PAGCOR head office.",
+  "source": "RMC No. 52-2022"
+ },
+ {
+  "qid": "A16-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "Can the BIR issue a Subpoena Duces Tecum for compliance monitoring even without an ongoing audit?",
+  "expected_answer": "Yes. The issuance and enforcement of a Subpoena Duces Tecum (SDT) applies to monitor and verify general taxpayer compliance under Section 5 of the Tax Code.",
+  "revie_response": "No, the BIR can only issue a Subpoena Duces Tecum once a formal audit or investigation has already commenced against the taxpayer.",
+  "source": "RMC No. 33-2023"
+ },
+ {
+  "qid": "A16-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "Pwede bang maglabas ang BIR ng Subpoena Duces Tecum para sa regular na pag-monitor kahit walang aktibong audit?",
+  "expected_answer": "Oo. Ang pag-issue at pag-enforce ng Subpoena Duces Tecum (SDT) ay ginagamit para i-monitor at i-verify ang pangkalahatang compliance ng mga taxpayer sa ilalim ng Section 5 ng Tax Code.",
+  "revie_response": "Hindi, makapaglalabas lamang ang BIR ng Subpoena Duces Tecum kapag nagsimula na ang isang pormal na audit o imbestigasyon laban sa taxpayer.",
+  "source": "RMC No. 33-2023"
+ },
+ {
+  "qid": "A17-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "Are vapor products required to carry internal revenue tax stamps before being distributed?",
+  "expected_answer": "Yes. Internal revenue stamps must be affixed to all vapor products in accordance with RR No. 18-2021 and RR No. 14-2022.",
+  "revie_response": "No, internal revenue stamps are only required for cigarettes; vapor products are currently exempt from this requirement.",
+  "source": "RMC No. 105-2023"
+ },
+ {
+  "qid": "A17-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "Kailangan bang lagyan ng internal revenue tax stamp ang mga vapor product bago ibenta sa merkado?",
+  "expected_answer": "Oo. Dapat lagyan ng internal revenue stamps ang lahat ng vapor products alinsunod sa RR No. 18-2021 at RR No. 14-2022.",
+  "revie_response": "Hindi, para lamang sa sigarilyo kailangan ang internal revenue stamps; exempted ang vapor products sa kasalukuyan.",
+  "source": "RMC No. 105-2023"
+ },
+ {
+  "qid": "A18-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "What is the preferential corporate income tax rate for non-profit proprietary educational institutions?",
+  "expected_answer": "The preferential corporate income tax rate is ten percent (10%), with a temporary rate of one percent (1%) applicable from July 1, 2020, to June 30, 2023.",
+  "revie_response": "The preferential corporate income tax rate for non-profit proprietary educational institutions is a flat five percent (5%) at all times, as codified permanently under Section 27(B) since 2018.",
+  "source": "RR No. 3-2022"
+ },
+ {
+  "qid": "A18-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "Magkano ang preferential corporate income tax rate para sa mga non-profit proprietary educational institutions?",
+  "expected_answer": "Sampung porsyento (10%) ang preferential corporate income tax rate, na may pansamantalang rate na isang porsyento (1%) mula Hulyo 1, 2020 hanggang Hunyo 30, 2023.",
+  "revie_response": "Limang porsyento (5%) lamang, palagi, ang preferential corporate income tax rate para sa non-profit proprietary educational institution, ayon sa permanenteng probisyon ng Section 27(B) mula 2018.",
+  "source": "RR No. 3-2022"
+ },
+ {
+  "qid": "A19-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "Is it mandatory to register loose-leaf and computerized books of accounts online via ORUS?",
+  "expected_answer": "Yes. The BIR reiterated the mandatory registration of Permanently Bound Loose-Leaf and Computerized Books of Accounts through the Online Registration and Update System (ORUS).",
+  "revie_response": "Yes, loose-leaf and computerized books of accounts should be registered through ORUS on the BIR website.",
+  "source": "RMC No. 4-2026"
+ },
+ {
+  "qid": "A19-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "Kailangan bang irehistro online sa ORUS ang mga loose-leaf at computerized books of accounts?",
+  "expected_answer": "Oo. Inulit ng BIR ang mandatory na pagrehistro ng Permanently Bound Loose-Leaf at Computerized Books of Accounts sa pamamagitan ng Online Registration and Update System (ORUS).",
+  "revie_response": "Oo, dapat irehistro ang loose-leaf at computerized books of accounts sa pamamagitan ng ORUS sa website ng BIR.",
+  "source": "RMC No. 4-2026"
+ },
+ {
+  "qid": "A20-EN",
+  "subset": "A: Matched pairs (EN)",
+  "query": "Are Sukuk or Islamic bonds treated neutrally compared to conventional bonds for tax purposes?",
+  "expected_answer": "Yes. Under the Tax Neutrality Provision of RA No. 11439, Sukuk structured in a Shari'ah-compliant manner are accorded tax treatment equivalent to conventional bonds.",
+  "revie_response": "No, Sukuk or Islamic bonds are taxed at a higher rate than conventional bonds because of their different legal structure.",
+  "source": "RMC No. 81-2024"
+ },
+ {
+  "qid": "A20-TL",
+  "subset": "A: Matched pairs (TL)",
+  "query": "Pareho ba ang tax treatment ng Sukuk o Islamic bonds sa mga regular na bonds para masunod ang tax neutrality?",
+  "expected_answer": "Oo. Sa ilalim ng Tax Neutrality Provision ng RA No. 11439, ang mga Sukuk na Shari'ah-compliant ang istruktura ay binibigyan ng tax treatment na katumbas ng conventional bonds.",
+  "revie_response": "Hindi, mas mataas ang buwis sa Sukuk o Islamic bonds kumpara sa conventional bonds dahil sa magkaibang legal structure nito.",
+  "source": "RMC No. 81-2024"
+ },
+ {
+  "qid": "B1",
+  "subset": "B: Taglish queries",
+  "query": "Magkano ang taunang gross sales para maituring na Small Taxpayer sa ilalim ng RR 8-2024?",
+  "expected_answer": "Ang Small Taxpayer ay may taunang gross sales na Tatlong Milyong Piso (₱3,000,000) hanggang mas mababa sa Dalawampung Milyong Piso (₱20,000,000).",
+  "revie_response": "Ang Small Taxpayer ay may taunang gross sales na Tatlong Milyon hanggang Dalawampung Milyong Piso.",
+  "source": "RR No. 8-2024"
+ },
+ {
+  "qid": "B2",
+  "subset": "B: Taglish queries",
+  "query": "Magkano ang limitasyon sa taunang benta para maibilang na Micro Taxpayer sa ilalim ng RR 8-2024?",
+  "expected_answer": "Ang taunang gross sales ay dapat mas mababa sa Tatlong Milyong Piso (₱3,000,000).",
+  "revie_response": "Dapat mas mababa sa Tatlong Milyong Piso (₱3,000,000) ang taunang benta.",
+  "source": "RR No. 8-2024"
+ },
+ {
+  "qid": "B3",
+  "subset": "B: Taglish queries",
+  "query": "Anong batas ang Ease of Paying Taxes Act na nag-amyenda sa mga probisyon ng Tax Code noong 2024?",
+  "expected_answer": "Republic Act No. 11976.",
+  "revie_response": "Republic Act No. 10963, na kilala bilang TRAIN Law, na inaprubahan noong Disyembre 19, 2017.",
+  "source": "RMC No. 3-2024"
+ },
+ {
+  "qid": "B4",
+  "subset": "B: Taglish queries",
+  "query": "Ilang porsyento ang withholding tax na ikakaltas ng mga e-commerce platforms sa sellers simula noong ipatupad ang RR 16-2023?",
+  "expected_answer": "Isang porsyento (1%) sa kalahati (50%) ng gross remittances ng platform sa seller.",
+  "revie_response": "Ang withholding tax ay ang bahagi ng buwis na ikinakaltas ng nagbabayad bago ibigay ang natitirang halaga sa tumatanggap, batay sa mga rate na nakatakda sa Tax Code.",
+  "source": "RR No. 16-2023 / RMC No. 8-2024"
+ },
+ {
+  "qid": "B5",
+  "subset": "B: Taglish queries",
+  "query": "May threshold ba sa kabuuang kita bago kaltasan ng withholding tax ang isang online seller?",
+  "expected_answer": "Oo, kakaltasan lamang kung ang taunang gross remittances ay lumampas sa ₱500,000.",
+  "revie_response": "Wala pong threshold; kakaltasan agad ang lahat ng online seller ng withholding tax mula sa unang benta.",
+  "source": "RR No. 16-2023 / RMC No. 8-2024"
+ },
+ {
+  "qid": "B6",
+  "subset": "B: Taglish queries",
+  "query": "Ano ang kondisyon para magamit ang Output VAT Credit sa mga uncollected receivables?",
+  "expected_answer": "Dapat ay naibenta ito on account, naibayad na ang kaukulang Output VAT sa BIR, at hindi pa nakokolekta ang bayad.",
+  "revie_response": "Kailangan lamang na ito ay benta on account at hindi pa nabayaran ng customer; hindi na kailangang naibayad na ng seller ang VAT sa BIR.",
+  "source": "RMC No. 65-2024"
+ },
+ {
+  "qid": "B7",
+  "subset": "B: Taglish queries",
+  "query": "Kasama ba sa VAT ang mga foreign digital service providers tulad ng Netflix sa ilalim ng RA 12023?",
+  "expected_answer": "Oo, pinapatawan na ng 12% Value-Added Tax ang supply ng digital services.",
+  "revie_response": "Oo, ngunit limang porsyento (5%) na VAT lamang ang ipinapataw sa mga foreign digital service provider.",
+  "source": "RMC No. 126-2024"
+ },
+ {
+  "qid": "B8",
+  "subset": "B: Taglish queries",
+  "query": "Legal pa ba ang operasyon ng POGO sa Pilipinas base sa pinakabagong kautusan ng BIR noong 2026?",
+  "expected_answer": "Hindi. Idineklarang ilegal ang lahat ng offshore gaming operations alinsunod sa Republic Act No. 12312.",
+  "revie_response": "Oo, legal pa rin ang operasyon ng POGO sa Pilipinas hangga't may balidong lisensya mula sa PAGCOR.",
+  "source": "RMC No. 13-2026"
+ },
+ {
+  "qid": "B9",
+  "subset": "B: Taglish queries",
+  "query": "Saan dapat ilagay ang BIR Registration Seal Badge ng mga online sellers alinsunod sa RMC 38-2026?",
+  "expected_answer": "Dapat itong i-post nang malinaw sa mismong website, homepage, o seller page sa e-commerce marketplace.",
+  "revie_response": "Dapat itong ilagay sa homepage o profile ng online shop.",
+  "source": "RMC No. 38-2026"
+ },
+ {
+  "qid": "B10",
+  "subset": "B: Taglish queries",
+  "query": "May QR code na ba ngayon ang bagong Certificate of Registration (COR) ng BIR?",
+  "expected_answer": "Oo, inihayag ng BIR ang pagkakaroon ng opisyal na QR Code sa Certificate of Registration.",
+  "revie_response": "Wala pa pong QR code na feature ang Certificate of Registration sa kasalukuyan.",
+  "source": "RMC No. 38-2026"
+ },
+ {
+  "qid": "B11",
+  "subset": "B: Taglish queries",
+  "query": "Magkano ang excise tax na ipinapataw sa locally manufactured perfumes sa ilalim ng RR 9-2023?",
+  "expected_answer": "Dalawampung porsyento (20%) batay sa wholesale price, bawas ang excise at VAT.",
+  "revie_response": "Sampung porsyento (10%) batay sa net retail price.",
+  "source": "RR No. 9-2023"
+ },
+ {
+  "qid": "B12",
+  "subset": "B: Taglish queries",
+  "query": "Kasama ba sa gross sales ng distribution utilities ang third-party charges base sa RMC 116-2024?",
+  "expected_answer": "Hindi, ibinubukod ang mga halagang earmarked para sa third parties.",
+  "revie_response": "Oo, kasama sa gross sales ang lahat ng third-party charges na sinisingil ng distribution utility.",
+  "source": "RMC No. 116-2024"
+ },
+ {
+  "qid": "B13",
+  "subset": "B: Taglish queries",
+  "query": "Umiiral pa ba ang cross-border doctrine para sa mga local purchases ng mga ecozone enterprises?",
+  "expected_answer": "Hindi na, nawalan na ito ng bisa para sa VAT zero-rating ng mga lokal na pagbili sa ilalim ng CREATE Act.",
+  "revie_response": "Oo, umiiral pa rin ito at awtomatikong zero-rated ang lahat ng local purchases ng ecozone enterprises.",
+  "source": "RMC No. 24-2022"
+ },
+ {
+  "qid": "B14",
+  "subset": "B: Taglish queries",
+  "query": "Kailan lamang kwalipikado sa VAT zero-rating ang mga benta sa isang registered export enterprise?",
+  "expected_answer": "Kung ang mga bilihin o serbisyo ay direkta at eksklusibong ginagamit (directly and exclusively used) sa rehistradong aktibidad.",
+  "revie_response": "Ang VAT zero-rating ay nangangahulugang zero porsyento (0%) ang ipapatupad na VAT rate sa isang transaksyon, sa halip na ang karaniwang labindalawang porsyento (12%).",
+  "source": "RMC No. 24-2022"
+ },
+ {
+  "qid": "B15",
+  "subset": "B: Taglish queries",
+  "query": "Kailan dapat i-remit sa BIR ng isang VAT-registered na taxpayer ang VAT na ikinaltas niya sa pagbili ng digital services mula sa nonresident digital service providers?",
+  "expected_answer": "Sa loob ng sampung (10) araw pagkatapos ng katapusan ng buwan kung kailan ginawa ang withholding, alinsunod sa reverse charge mechanism ng Section 114(D).",
+  "revie_response": "Sa loob ng dalawampu't limang (25) araw pagkatapos ng katapusan ng quarter.",
+  "source": "RMC No. 126-2024"
+ },
+ {
+  "qid": "B16",
+  "subset": "B: Taglish queries",
+  "query": "Na-veto ba ng Pangulo ang probisyon ng EOPT Act na nag-e-exempt sa micro-enterprises sa obligasyong mag-withhold ng buwis?",
+  "expected_answer": "Oo. Na-veto ng Pangulo ang probisyon ng EOPT Act na nagbibigay sa micro-enterprises ng exemption sa obligasyong mag-withhold ng buwis.",
+  "revie_response": "Hindi. Hindi na-veto ng Pangulo ang probisyong ito; ipinatupad ito nang buo sa EOPT Act.",
+  "source": "RMC No. 3-2024"
+ },
+ {
+  "qid": "B17",
+  "subset": "B: Taglish queries",
+  "query": "Anong phrase ang dapat i-stamp ng seller sa invoice kapag nag-claim siya ng Output VAT Credit sa uncollected receivable?",
+  "expected_answer": "Ang phrase na \"Claimed Output VAT Credit\", na i-i-stamp sa duplicate/triplicate copy (seller's copy) ng invoice para sa uncollected receivable.",
+  "revie_response": "Ang phrase na \"VAT Deferred - Uncollected,\" na dapat i-stamp sa orihinal na kopya ng invoice.",
+  "source": "RMC No. 65-2024"
+ },
+ {
+  "qid": "B18",
+  "subset": "B: Taglish queries",
+  "query": "Ano ang nililinaw ng RMC No. 10-2026 ukol sa mga donasyong binubuo ng purong salapi?",
+  "expected_answer": "Nililinaw nito ang tamang tax treatment at documentary requirements sa filing at pagbabayad ng Donor's Tax sa cash donations.",
+  "revie_response": "Nililinaw nito na exempted na sa donor's tax ang lahat ng cash donations na hindi lalagpas sa ₱500,000 kada taon.",
+  "source": "RMC No. 10-2026"
+ },
+ {
+  "qid": "B19",
+  "subset": "B: Taglish queries",
+  "query": "Anong batas ang nagtatakda ng tax incentives para sa Philippine natural gas industry sa RMC 11-2025?",
+  "expected_answer": "Republic Act No. 12120 (Philippine Natural Gas Industry Development Act).",
+  "revie_response": "Republic Act No. 11371 (Philippine Downstream Natural Gas Industry Act).",
+  "source": "RMC No. 11-2025 / RR No. 2-2026"
+ },
+ {
+  "qid": "B20",
+  "subset": "B: Taglish queries",
+  "query": "Pwede bang kumuha ng impormasyon ang BIR mula sa SEC hinggil sa beneficial ownership ng mga kumpanya?",
+  "expected_answer": "Oo, sa bisa ng Data Sharing Agreement sa pagitan ng BIR at SEC.",
+  "revie_response": "Hindi, hindi pinapayagan ang BIR na humingi ng impormasyon mula sa SEC maliban kung may korte order.",
+  "source": "RMO No. 26-2023 / RMO No. 1-2025"
+ },
+ {
+  "qid": "B21",
+  "subset": "B: Taglish queries",
+  "query": "Para saan ang BIR Central Repository System na inilatag sa RMO 40-2023?",
+  "expected_answer": "Ito ang opisyal na imbakan para sa pag-archive at safekeeping ng mga digital documents ng Bureau.",
+  "revie_response": "Sorry, I can't answer that at the moment. Please reach out to the Information Systems Group for this concern.",
+  "source": "RMO No. 40-2023"
+ },
+ {
+  "qid": "B22",
+  "subset": "B: Taglish queries",
+  "query": "Sino ang may kapangyarihang mag-apruba ng tax exemption para sa separation benefits sa Large Taxpayers Service?",
+  "expected_answer": "Ang Assistant Commissioner ng Large Taxpayers Service o ang Head Revenue Executive Assistant.",
+  "revie_response": "Ang Regional Director ang may kapangyarihang mag-apruba nito para sa Large Taxpayers.",
+  "source": "RDAO No. 4-2022"
+ },
+ {
+  "qid": "B23",
+  "subset": "B: Taglish queries",
+  "query": "Saan dapat iparehistro ang mga loose-leaf at computerized books of accounts simula noong 2026?",
+  "expected_answer": "Sa Online Registration and Update System (ORUS) ng BIR.",
+  "revie_response": "Sa Online Registration and Update System (ORUS) ng BIR.",
+  "source": "RMC No. 4-2026"
+ },
+ {
+  "qid": "B24",
+  "subset": "B: Taglish queries",
+  "query": "Magkano ang kabuuang collection target ng BIR para sa Calendar Year 2026?",
+  "expected_answer": "Tatlong trilyon at limang daan at walumpung bilyong piso (₱3.580 Trillion).",
+  "revie_response": "Tatlong trilyon at limang daan bilyong piso (₱3.5 Trillion) ang collection target ng BIR para sa 2026, ayon sa Department of Budget and Management.",
+  "source": "RMO No. 9-2026"
+ },
+ {
+  "qid": "B25",
+  "subset": "B: Taglish queries",
+  "query": "Pwede bang magsagawa ng covert surveillance ang BIR STRIKE Group sa mga hinihinalang ilegal na negosyo?",
+  "expected_answer": "Oo, may awtoridad silang magsagawa ng surveillance para sa posibleng pag-seize ng unlicensed articles.",
+  "revie_response": "Hindi, kailangan muna ng korte order bago magsagawa ng anumang surveillance ang BIR STRIKE Group.",
+  "source": "RMO No. 16-2023"
+ },
+ {
+  "qid": "B26",
+  "subset": "B: Taglish queries",
+  "query": "Mandatory ba para sa mga taxpayers ang pagsagot sa Online Client Satisfaction Survey?",
+  "expected_answer": "Hinihikayat silang sagutan ito ngunit hindi ito sapilitan para makuha ang serbisyo.",
+  "revie_response": "Oo, sapilitan ang pagsagot dito bago matapos ang anumang transaksyon sa BIR; hindi maipoprocess ang request kung hindi ito nasagutan.",
+  "source": "RMO No. 14-2023"
+ },
+ {
+  "qid": "B27",
+  "subset": "B: Taglish queries",
+  "query": "Paano tinitiyak ang tax neutrality sa pagbili o pag-isyu ng mga Islamic bonds o Sukuk?",
+  "expected_answer": "Ipinapataw ang parehong panuntunan sa buwis na katulad ng sa conventional bonds.",
+  "revie_response": "Sa pamamagitan ng pagpapataw ng karagdagang 5% na buwis sa Sukuk kumpara sa conventional bonds.",
+  "source": "RMC No. 81-2024"
+ },
+ {
+  "qid": "B28",
+  "subset": "B: Taglish queries",
+  "query": "Ano ang kailangang ilakip sa mga dokumentong isinusumite sa Office of the Commissioner ayon sa RMC 135-2022?",
+  "expected_answer": "Isang 1-page memorandum na naglalaman ng Completed Staff Work (CSW).",
+  "revie_response": "Kailangang ilakip ang isang notarized na Special Power of Attorney sa lahat ng dokumentong isusumite.",
+  "source": "RMC No. 135-2022"
+ },
+ {
+  "qid": "B29",
+  "subset": "B: Taglish queries",
+  "query": "May bayad ba ang data access sa ilalim ng kasunduan ng BIR at National Library of the Philippines?",
+  "expected_answer": "Walang bayad (without cost) ang access alinsunod sa nilagdaang Memorandum of Agreement.",
+  "revie_response": "Oo, may bayad na ₱500 kada request ang pag-access ng datos sa ilalim ng kasunduang ito sa pagitan ng BIR at National Library.",
+  "source": "RMC No. 89-2023"
+ },
+ {
+  "qid": "B30",
+  "subset": "B: Taglish queries",
+  "query": "May karapatan ba sa VAT zero-rating sa local purchases ang mga registered Domestic Market Enterprises sa ecozones?",
+  "expected_answer": "Wala. Ang mga benta sa Domestic Market Enterprises ay subject sa 12% VAT.",
+  "revie_response": "Ang Value-Added Tax o VAT ay isang labindalawang porsyentong (12%) buwis na ipinapataw sa halos lahat ng benta ng produkto at serbisyo sa Pilipinas.",
+  "source": "RMC No. 24-2022"
+ },
+ {
+  "qid": "B31",
+  "subset": "B: Taglish queries",
+  "query": "Pwede bang magsilbing basehan ng VAT exemption ang delivery ng serbisyo sa labas ng bansa ayon sa CREATE Act?",
+  "expected_answer": "Oo, kung kwalipikado bilang export services na binayaran gamit ang acceptable foreign currency.",
+  "revie_response": "Oo, awtomatikong VAT-exempt ang lahat ng serbisyong inihahatid sa labas ng bansa, kahit hindi acceptable foreign currency ang bayad.",
+  "source": "RMC No. 24-2022"
+ },
+ {
+  "qid": "B32",
+  "subset": "B: Taglish queries",
+  "query": "Ano ang mangyayari kung hindi kayang ihiwalay ang direct expenses sa administrative expenses para sa VAT zero-rating?",
+  "expected_answer": "Kung hindi matukoy ang tamang allocation, papatawan ito ng 12% VAT.",
+  "revie_response": "Awtomatikong ituturing na non-VATable ang buong transaksyon kung hindi maihiwalay ang mga gastos.",
+  "source": "RMC No. 24-2022"
+ },
+ {
+  "qid": "B33",
+  "subset": "B: Taglish queries",
+  "query": "Kailangan bang kumuha ng taunang certification ang export enterprises para patunayan ang VAT zero-rating entitlement?",
+  "expected_answer": "Oo, ang Investment Promotion Agency (IPA) ay naglalabas taon-taon ng VAT zero percent (0%) certification.",
+  "revie_response": "Hindi, hindi na kailangan ng taunang certification matapos makakuha ng orihinal na VAT zero-rating certificate.",
+  "source": "RMC No. 24-2022"
+ },
+ {
+  "qid": "B34",
+  "subset": "B: Taglish queries",
+  "query": "Ilang porsyento ang taunang pagtaas ng excise tax sa Heated Tobacco Products at Vapor Products simula Enero 1, 2024 ayon sa RR 14-2022?",
+  "expected_answer": "Limang porsyento (5%) bawat taon, simula Enero 1, 2024.",
+  "revie_response": "Sampung porsyento (10%) bawat taon simula 2024.",
+  "source": "RR No. 14-2022"
+ },
+ {
+  "qid": "B35",
+  "subset": "B: Taglish queries",
+  "query": "Saan ibinabase ang kompyutasyon ng Total Landed Value ng mga imported na sasakyan para sa eATRIG?",
+  "expected_answer": "Sa kabuuang halaga kabilang ang invoice value, customs duties, freight, insurance, at iba pang charges bago ilabas sa customs.",
+  "revie_response": "Ibinabase lamang ito sa invoice value ng sasakyan, hindi kasama ang freight o insurance.",
+  "source": "RMC No. 30-2023"
+ },
+ {
+  "qid": "B36",
+  "subset": "B: Taglish queries",
+  "query": "Bakit inilabas ang RMC No. 8-2026 noong Enero 2026?",
+  "expected_answer": "Upang bawiin ang suspensyon at muling simulan ang lahat ng field audits at tax operations ng BIR.",
+  "revie_response": "Inilabas ito bilang bahagi ng taunang reorganization ng mga revenue district offices.",
+  "source": "RMC No. 8-2026"
+ },
+ {
+  "qid": "B37",
+  "subset": "B: Taglish queries",
+  "query": "Ano ang bagong pangalan ng RDO No. 17A-North Tarlac simula noong 2026?",
+  "expected_answer": "Pinalitan ang pangalan nito bilang RDO No. 17A-South Tarlac.",
+  "revie_response": "Pinalitan ang pangalan nito bilang RDO No. 17A-South Tarlac.",
+  "source": "RAO No. 1-2026"
+ },
+ {
+  "qid": "B38",
+  "subset": "B: Taglish queries",
+  "query": "Ano ang bagong pangalan ng RDO No. 17B-South Tarlac sa ilalim ng RAO 1-2026?",
+  "expected_answer": "Pinalitan ito bilang RDO No. 17B-North Tarlac.",
+  "revie_response": "Pinalitan ito bilang RDO No. 17B-North Tarlac.",
+  "source": "RAO No. 1-2026"
+ },
+ {
+  "qid": "B39",
+  "subset": "B: Taglish queries",
+  "query": "Aling division ang nangangasiwa sa security services ng mga Revenue Regions simula noong RAO 1-2022?",
+  "expected_answer": "Ang Regional Investigation Division (RID).",
+  "revie_response": "Sorry, I can't answer that. Please contact your RDO or email contact_us@bir.gov.ph for this concern.",
+  "source": "RAO No. 1-2022"
+ },
+ {
+  "qid": "B40",
+  "subset": "B: Taglish queries",
+  "query": "Ilang porsyento ang regular corporate income tax rate kung ang unrelated income ng isang eskwelahan ay lumagpas sa 50%?",
+  "expected_answer": "Dalawampu't limang porsyento (25%) regular corporate income tax rate sa buong taxable income.",
+  "revie_response": "Tatlumpung porsyento (30%) ang regular corporate income tax rate sa kabuuang taxable income ng eskwelahan, dahil awtomatiko itong nawawalan ng preferential status.",
+  "source": "RR No. 3-2022"
+ },
+ {
+  "qid": "B41",
+  "subset": "B: Taglish queries",
+  "query": "Ano ang panuntunan sa tax-free exchange of property kapag nagpalit ng ari-arian para sa shares of stock sa ilalim ng CREATE?",
+  "expected_answer": "Hindi kinikilala ang gain o loss sa panahon ng palitan, ngunit ipinagpapaliban ito gamit ang substituted basis.",
+  "revie_response": "Hindi na ito muling babawiin o babayaran ng buwis kailanman, dahil permanenteng exempted na ito.",
+  "source": "RMC No. 19-2022"
+ },
+ {
+  "qid": "B42",
+  "subset": "B: Taglish queries",
+  "query": "Required ba ang prior BIR confirmation ruling bago maipatupad ang isang tax-free exchange sa ilalim ng Section 40(C)(2)?",
+  "expected_answer": "Hindi na kailangan ng prior BIR ruling bago mag-transact, ngunit sasailalim ito sa post-transaction audit ng RDO.",
+  "revie_response": "Oo, kinakailangan ang prior BIR confirmation ruling bago maisagawa ang anumang tax-free exchange.",
+  "source": "RMC No. 19-2022"
+ },
+ {
+  "qid": "B43",
+  "subset": "B: Taglish queries",
+  "query": "Ano ang layunin ng BIR Digital Transformation Roadmap 2025-2028 na inilatag sa RMO 48-2024?",
+  "expected_answer": "Nilalayon nitong iangat ang taxpayer experience, palakasin ang pamamahala, at gawing data-driven at episyente ang kawanihan.",
+  "revie_response": "Nilalayon nitong ganap na alisin ang paper-based transactions sa lahat ng RDO pagsapit ng 2026.",
+  "source": "RMO No. 48-2024"
+ },
+ {
+  "qid": "B44",
+  "subset": "B: Taglish queries",
+  "query": "Ano ang portal na itinatag noong 2024 na nagsisilbing sentralisadong imbakan ng employee reference materials sa BIR?",
+  "expected_answer": "BIR OneHub Portal.",
+  "revie_response": "Ang portal na ito ay tinatawag na BIR Knowledge Hub, na inilunsad noong Agosto 2024 bilang bahagi ng Digital Transformation Roadmap.",
+  "source": "RMO No. 43-2024"
+ },
+ {
+  "qid": "B45",
+  "subset": "B: Taglish queries",
+  "query": "Ano ang naging desisyon sa Aces Philippines case na ipinaliwanag sa RMC 5-2024 at RMC 24-2026?",
+  "expected_answer": "Ang mga pagbabayad para sa satellite airtime services sa Pilipinas ay itinuturing na income within the Philippines at papatawan ng Final Withholding Tax.",
+  "revie_response": "Ipinasiya ng Korte Suprema na exempted sa withholding tax ang lahat ng satellite airtime payments.",
+  "source": "RMC No. 5-2024 / RMC No. 24-2026"
+ },
+ {
+  "qid": "B46",
+  "subset": "B: Taglish queries",
+  "query": "Anong batas ang nagtatag ng Bulacan Special Economic Zone and Freeport na ipinaalam sa RMC 103-2024?",
+  "expected_answer": "Republic Act No. 11999.",
+  "revie_response": "Ang mga special economic zone ay karaniwang binibigyan ng mga insentibo sa buwis, tulad ng income tax holiday at limang porsyentong (5%) special tax rate sa halip na regular corporate income tax.",
+  "source": "RMC No. 103-2024"
+ },
+ {
+  "qid": "B47",
+  "subset": "B: Taglish queries",
+  "query": "Ano ang tawag sa sistema ng pagsasanay at HR na ipinatupad sa BIR alinsunod sa RMO 30-2025?",
+  "expected_answer": "Competency-Based Human Resource Management System (CBHRMS).",
+  "revie_response": "Tinatawag itong Performance and Rewards Information System (PRAISE).",
+  "source": "RMO No. 30-2025"
+ },
+ {
+  "qid": "B48",
+  "subset": "B: Taglish queries",
+  "query": "Sa aling level ng CSC PRIME-HRM naka-align ang Competency Model ng BIR sa RMO 30-2025?",
+  "expected_answer": "Maturity Level 3.",
+  "revie_response": "Sorry, I can't answer that right now. Please coordinate with the BIR Human Resource Development Service for this concern.",
+  "source": "RMO No. 30-2025"
+ },
+ {
+  "qid": "B49",
+  "subset": "B: Taglish queries",
+  "query": "Anong sistema ang kailangang sundin sa pagsubok ng mga bagong ICT solutions sa BIR base sa RMO 31-2025?",
+  "expected_answer": "Pagsasagawa ng Proof-of-Concept (POC) bago ito opisyal na bilhin o gamitin.",
+  "revie_response": "Dapat munang sumailalim sa apat na buwang beta testing bago opisyal na gamitin.",
+  "source": "RMO No. 31-2025"
+ },
+ {
+  "qid": "B50",
+  "subset": "B: Taglish queries",
+  "query": "Ano ang binago ng RAO No. 5-2025 sa Mindanao?",
+  "expected_answer": "Muling inayos ang hurisdiksyon ng mga Revenue District Offices sa ilalim ng Bangsamoro Autonomous Region in Muslim Mindanao (BARMM).",
+  "revie_response": "Nagdagdag ito ng dalawang bagong RDO sa Davao Region.",
+  "source": "RAO No. 5-2025"
+ },
+ {
+  "qid": "B51",
+  "subset": "B: Taglish queries",
+  "query": "Bakit naglabas ang BIR ng RMC 46-2024 at RMC 8-2025 ukol sa mga produktong tabako?",
+  "expected_answer": "Upang ilathala ang updated na listahan ng mga rehistradong manufacturers, importers, at exporters ng sigarilyo at vape products.",
+  "revie_response": "Inilabas ang mga ito para ipatupad ang bagong floor price ng mga produktong tabako.",
+  "source": "RMC No. 46-2024 / RMC No. 8-2025"
+ },
+ {
+  "qid": "B52",
+  "subset": "B: Taglish queries",
+  "query": "Pwede pa bang gamitin ng National Government Agencies ang eTRA para magbayad ng penalties ayon sa RMC 1-2024?",
+  "expected_answer": "Hindi na. Ipinatigil ang paggamit ng electronic Tax Remittance Advice (eTRA) para sa pagbabayad ng mga penalties.",
+  "revie_response": "Oo, pwede pa ring gamitin ng National Government Agencies ang eTRA para magbayad ng penalties.",
+  "source": "RMC No. 1-2024"
+ },
+ {
+  "qid": "B53",
+  "subset": "B: Taglish queries",
+  "query": "Anong administrative order ang nagbago sa sakop ng Makati at Taguig-Pateros RDOs noong 2024?",
+  "expected_answer": "Revenue Administrative Order (RAO) No. 1-2024.",
+  "revie_response": "Ito ay Revenue Administrative Order No. 3-2023.",
+  "source": "RAO No. 1-2024"
+ },
+ {
+  "qid": "B54",
+  "subset": "B: Taglish queries",
+  "query": "Ano ang ipinagbabawal sa mga e-marketplace bago magkaltas ng 1% withholding tax sa sellers?",
+  "expected_answer": "Hindi dapat magkaltas kung ang kabuuang benta ng seller sa buong taon ay hindi lumampas sa ₱500,000 threshold.",
+  "revie_response": "Ipinagbabawal ang pagkaltas kung ang seller ay hindi rehistrado sa BIR, anuman ang laki ng benta.",
+  "source": "RMC No. 8-2024"
+ },
+ {
+  "qid": "B55",
+  "subset": "B: Taglish queries",
+  "query": "Aling revenue regulation ang nagtatakda ng mga alituntunin sa pag-claim ng tax refund sa ilalim ng EOPT?",
+  "expected_answer": "Revenue Regulations No. 5-2024.",
+  "revie_response": "Revenue Regulations No. 3-2024 ang nagtatakda ng mga alituntuning ito, na epektibo simula Enero 2024.",
+  "source": "RR No. 5-2024"
+ },
+ {
+  "qid": "B56",
+  "subset": "B: Taglish queries",
+  "query": "Kailan dapat isumite ang Quarterly Progress Report para sa BIR Strategic Plan 2024-2028 base sa RMO 46-2024?",
+  "expected_answer": "Tuwing ika-15 araw ng buwan kasunod ng quarter. Isinusumite ito ng mga ACIR at Regional Directors sa ACIR, PMS Attention: Chief, PPD.",
+  "revie_response": "Dapat isumite ito sa mismong huling araw ng bawat quarter, ayon sa itinakdang Key Result Area ng BIR Strategic Plan.",
+  "source": "RMO No. 46-2024"
+ },
+ {
+  "qid": "B57",
+  "subset": "B: Taglish queries",
+  "query": "Paano ang tax treatment sa mga development projects na pinangangasiwaan ng US Embassy Foreign Assistance Section?",
+  "expected_answer": "Ipinagkakaloob ang kaukulang tax exemptions alinsunod sa 1951 Agreement on Economic and Technical Cooperation.",
+  "revie_response": "Sorry, I can't answer that. This falls outside what I can assist with — please email contact_us@bir.gov.ph for further guidance.",
+  "source": "RMC No. 21-2026"
+ },
+ {
+  "qid": "B58",
+  "subset": "B: Taglish queries",
+  "query": "Kailangan bang magsumite ng audited financial statements ang mga kooperatiba para sa renewal ng kanilang tax exemption?",
+  "expected_answer": "Oo, ito ay mandatoryong rekisito para sa renewal ng Certificate of Tax Exemption ng mga kooperatiba.",
+  "revie_response": "Hindi ito mandatory requirement, ngunit inirerekomenda lamang ito para sa transparency.",
+  "source": "RMC No. 48-2022"
+ },
+ {
+  "qid": "B59",
+  "subset": "B: Taglish queries",
+  "query": "Ilang dokumento mula sa SEC ang maaaring hilingin ng BIR kada araw sa ilalim ng RMO 1-2025?",
+  "expected_answer": "Hanggang 100 dokumento kada araw, anuman ang uri ng dokumento.",
+  "revie_response": "Hanggang limampung (50) dokumento lamang kada araw ang maaaring hilingin ng BIR mula sa SEC, ayon sa naunang kasunduan noong 2023.",
+  "source": "RMO No. 1-2025"
+ },
+ {
+  "qid": "B60",
+  "subset": "B: Taglish queries",
+  "query": "Sino ang may pananagutan sa pag-verify ng accomplishments ng Taxpayer Awareness Program sa mga regional offices?",
+  "expected_answer": "Ang Assistant Regional Director bilang designated Sub-Social Media Team Head, katuwang ang Client Support Unit (CSU) Head.",
+  "revie_response": "Ang Chief of the Client Support Unit lamang ang may pananagutan dito, batay sa istruktura ng BIR National Office.",
+  "source": "RMO No. 52-2022"
+ }
+]

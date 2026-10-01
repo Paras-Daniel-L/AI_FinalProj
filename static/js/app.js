@@ -3,10 +3,40 @@
 ═══════════════════════════════════════════════ */
 let messages = [];
 let isLoading = false;
-const API_BASE = ''; // Backend server origin (FastAPI)[cite: 3]
+const API_BASE = ''; // Backend server origin (FastAPI)
+
+// Only the most recent turns are sent. The server ignores history unless
+// USE_HISTORY=1, and then keeps only the last 10 itself (MAX_HISTORY_MESSAGES).
+// Sending the whole chat broke every question from #52 on: schemas.py
+// rejects more than 100 history messages with HTTP 422.
+const MAX_HISTORY_TO_SEND = 10;
 
 if (typeof marked !== 'undefined') {
   marked.setOptions({ gfm: true, breaks: true });
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Markdown -> SAFE HTML for the bot bubble.
+ * The answer text comes from a model and can be served to other visitors
+ * from the answer cache, so its HTML is always passed through DOMPurify
+ * (removes <script>, onerror=, javascript: links, etc.). If either library
+ * failed to load, the text is shown escaped — never inserted as raw HTML.
+ */
+function renderMarkdown(text) {
+  const source = String(text ?? '');
+  if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+    return escapeHtml(source).replace(/\n/g, '<br>');
+  }
+  return DOMPurify.sanitize(marked.parse(source));
 }
 
 /* ═══════════════════════════════════════════════
@@ -76,13 +106,18 @@ async function sendMessage(query) {
 
   switchToChatView();
 
-  // Push to local history and UI[cite: 3]
+  // Push to local history and UI
   messages.push({ role: 'user', content: query });
   appendUserBubble(query);
   setLoading(true);
 
-  // Extract history for context
-  const history = messages.slice(0, -1).map(m => ({ role: m.role, content: m.content }));
+  // Recent turns only (see MAX_HISTORY_TO_SEND). Error bubbles are not real
+  // conversation turns, so they are left out.
+  const history = messages
+    .slice(0, -1)
+    .filter(m => m.mode !== 'error')
+    .slice(-MAX_HISTORY_TO_SEND)
+    .map(m => ({ role: m.role, content: m.content }));
 
   try {
     const res = await fetch(`${API_BASE}/query`, {
@@ -93,7 +128,11 @@ async function sendMessage(query) {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
-      throw new Error(err.detail || `HTTP ${res.status}`);
+      // FastAPI validation errors (HTTP 422) carry a list of objects, not a string.
+      const detail = Array.isArray(err.detail)
+        ? err.detail.map(d => d.msg || JSON.stringify(d)).join('; ')
+        : err.detail;
+      throw new Error(detail || `HTTP ${res.status}`);
     }
 
     const data = await res.json();
@@ -101,9 +140,9 @@ async function sendMessage(query) {
       role: 'assistant',
       content: data.answer,
       classification: data.classification,
-      predicted_class: data.predicted_class,
       mode: data.mode,
       sources: data.sources || [],
+      cached: !!data.cached,
     };
     messages.push(botMsg);
     appendBotBubble(botMsg);
@@ -113,7 +152,6 @@ async function sendMessage(query) {
       role: 'assistant',
       content: `**Error:** ${err.message}\n\nPlease check your connection or backend server.`,
       classification: 'Error',
-      predicted_class: -1,
       mode: 'error',
       sources: [],
     };
@@ -131,8 +169,7 @@ function appendUserBubble(text) {
   const row = document.createElement('div');
   row.className = 'flex flex-col items-end gap-space-xs self-end max-w-2xl w-full';
   
-  // Basic html escaping
-  const escapedText = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+  const escapedText = escapeHtml(text).replace(/\n/g, '<br>');
 
   row.innerHTML = `
     <div class="flex items-center gap-space-sm pr-space-xs">
@@ -155,9 +192,19 @@ function appendBotBubble(msg) {
   const row = document.createElement('div');
   row.className = 'flex flex-col items-start gap-space-xs self-start max-w-3xl w-full';
 
-  // Format mode label (RAG vs Conv vs Error)[cite: 3]
-  const modeLabel = msg.mode === 'rag' ? 'Verified RAG Synthesis' : msg.mode === 'error' ? 'Error' : 'Conversational';
-  const parsedContent = typeof marked !== 'undefined' ? marked.parse(msg.content || '') : msg.content;
+  // Header badge + footer chip per response mode. There is no open-domain /
+  // "Direct LLM" path anymore: a response is a verified RAG answer, a
+  // refusal (no supporting evidence), a fixed greeting, or an error.
+  const MODE_LABELS = {
+    rag:       { badge: 'Verified RAG Synthesis', chip: 'RAG Processed' },
+    no_answer: { badge: 'No Supported Answer',    chip: 'Refused (no evidence)' },
+    greeting:  { badge: 'Greeting',               chip: 'Fixed Reply' },
+    rejected:  { badge: 'Question Not Processed', chip: 'Rejected (input)' },
+    error:     { badge: 'Error',                  chip: 'Error' },
+  };
+  const modeInfo = MODE_LABELS[msg.mode] || MODE_LABELS.error;
+  const modeLabel = modeInfo.badge;
+  const parsedContent = renderMarkdown(msg.content || '');
 
   // Build the sources accordion if sources exist
   let sourcesHtml = '';
@@ -165,7 +212,7 @@ function appendBotBubble(msg) {
     const sourceItems = msg.sources.map(s => `
       <div class="flex items-center gap-2 bg-surface-container-lowest/60 hover:bg-surface-container-lowest transition-colors px-3 py-1.5 rounded-lg">
         <span class="font-label-sm text-label-sm bg-primary text-on-primary px-1.5 py-0.5 rounded">Source</span>
-        <span class="font-body-sm text-body-sm text-on-secondary-fixed font-medium break-all">${String(s).replace(/</g, '&lt;')}</span>
+        <span class="font-body-sm text-body-sm text-on-secondary-fixed font-medium break-all">${escapeHtml(s)}</span>
       </div>
     `).join('');
 
@@ -190,7 +237,7 @@ function appendBotBubble(msg) {
       <div class="w-8 h-8 rounded-lg bg-secondary-container flex items-center justify-center shadow-sm">
         <span class="font-label-md text-label-md text-on-secondary-fixed font-bold">T</span>
       </div>
-      <span class="font-code-citation text-code-citation text-on-surface">TaxSight PH • Just Now</span>
+      <span class="font-code-citation text-code-citation text-on-surface">SagotAI • Just Now</span>
       <span class="font-label-sm text-label-sm bg-surface-container px-2 py-0.5 rounded-full text-secondary">${modeLabel}</span>
     </div>
     
@@ -203,10 +250,10 @@ function appendBotBubble(msg) {
     
     <div class="flex items-center gap-space-xs mt-space-2xs pl-space-xs">
       <span class="font-label-sm text-label-sm px-space-md py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed font-medium shadow-sm">
-        ${msg.mode === 'rag' ? 'RAG Processed' : 'Direct LLM'}
+        ${modeInfo.chip}${msg.cached ? ' · Cached' : ''}
       </span>
       <span class="font-label-sm text-label-sm px-space-md py-1 rounded-full bg-secondary-container text-on-secondary-fixed font-medium shadow-sm">
-        ${msg.classification || 'General Context'}
+        ${escapeHtml(msg.classification || 'General Context')}
       </span>
     </div>
   `;

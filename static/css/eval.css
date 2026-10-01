@@ -1,0 +1,168 @@
+/* Styles for the evaluation tool (static/eval.html).
+ *
+ * Plain CSS only — no Tailwind @apply — so VS Code's CSS checker (and any
+ * other standard tool) understands every rule. The page still uses Tailwind
+ * utility classes in its HTML (loaded from cdn.tailwindcss.com, same as the
+ * chatbot); this file holds everything else. It is linked BEFORE the Tailwind
+ * script, so on a tie a utility class in the HTML (e.g. "!w-auto",
+ * "text-right") wins over the component classes below — the same order
+ * Tailwind's own @layer components / utilities would give.
+ *
+ * Colors match the design tokens in eval.html's tailwind.config (which match
+ * the chatbot's static/index.html).
+ */
+
+/* Views/tabs must stay hidden even if the Tailwind CDN fails to load: this
+   file is served by our own server, so it still loads in that case. */
+.hidden { display: none; }
+
+/* ── Chart + status tokens (dataviz method) ─────────────────────────────────
+   Series 1 = Sagot AI (the chatbot's blue), series 2 = the other chatbot
+   (orange). Validated as a pair: CVD ΔE 29.9, normal-vision ΔE 38.5, both
+   >= 3:1 on white. Every chart also carries a legend and labels, so color is
+   never the only cue. */
+:root {
+  --series-1: #2563eb; --series-1-track: #dbeafe;
+  --series-2: #eb6834; --series-2-track: #fde3d7;
+  --good: #0ca30c; --good-text: #006300; --critical: #d03b3b; --warning: #fab219;
+  --grid: #e2e8f0; --muted: #64748b;
+
+  /* design tokens (same values as tailwind.config in eval.html) */
+  --primary: #2563eb; --primary-hover: #1d4ed8; --primary-fixed: #dbeafe;
+  --surface-lowest: #ffffff; --surface-low: #f1f5f9; --surface-container: #e2e8f0;
+  --on-surface-variant: #475569; --outline-variant: #cbd5e1;
+  --transition-colors: color, background-color, border-color, text-decoration-color, fill, stroke;
+}
+
+html { scroll-behavior: smooth; }
+body { font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
+.material-symbols-outlined { font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24; }
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* ── Components (formerly @apply rules) ─────────────────────────────────── */
+
+/* numbered step badge (1, 2, 3) */
+.step {
+  width: 1.75rem; height: 1.75rem; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 9999px; background: var(--primary); color: #ffffff;
+  font-size: 12px; line-height: 16px; letter-spacing: 0.02em; font-weight: 600;
+}
+
+/* form inputs, textareas, selects */
+.field {
+  width: 100%;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 14px; line-height: 22px;
+}
+/* one-line boxes (text inputs and dropdowns) are all the same height;
+   textareas take their height from their rows="" attribute */
+input.field, select.field { height: 2.5rem; }
+.field:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgb(37 99 235 / 0.3);
+}
+.field-label { display: block; font-size: 13px; line-height: 18px; font-weight: 600; }
+.field-help { font-size: 13px; line-height: 18px; color: var(--on-surface-variant); margin-bottom: 0.375rem; }
+
+/* buttons */
+.btn-primary,
+.btn-secondary,
+.btn-ghost {
+  display: inline-flex; align-items: center; gap: 0.375rem;
+  border-radius: 9999px;
+  font-size: 13px; line-height: 18px; font-weight: 600;
+  transition-property: var(--transition-colors);
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+.btn-primary {
+  padding: 0.625rem 1.25rem;
+  background: var(--primary); color: #ffffff;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary:disabled:hover { background: var(--primary); }
+.btn-secondary { padding: 0.5rem 1rem; background: var(--primary-fixed); color: var(--primary-hover); }
+.btn-secondary:hover { background: #c7dcfd; }
+.btn-ghost { padding: 0.5rem 1rem; color: var(--primary); }
+.btn-ghost:hover { background: var(--surface-low); }
+
+/* small pill label (status chips, tags) */
+.chip {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  padding: 0.125rem 0.5rem; border-radius: 9999px; white-space: nowrap;
+  font-size: 12px; line-height: 16px; letter-spacing: 0.02em; font-weight: 600;
+}
+
+/* white rounded panel */
+.card {
+  background: var(--surface-lowest);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+/* table header / body cells */
+.th {
+  text-align: left; white-space: nowrap;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--surface-container);
+  color: var(--on-surface-variant);
+  font-size: 12px; line-height: 16px; letter-spacing: 0.02em; font-weight: 600;
+}
+.td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--surface-low); vertical-align: top; }
+
+/* ── Meters and bars ────────────────────────────────────────────────────── */
+.meter { position: relative; height: 8px; border-radius: 9999px; }
+.meter > .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 9999px; }
+.meter > .mark { position: absolute; top: -4px; bottom: -4px; width: 2px; background: #0f172a; border-radius: 1px; }
+.bar { transition: width 0.4s ease; }
+
+/* ── Chatbot answers (markdown) ─────────────────────────────────────────── */
+.md p { margin: 6px 0; }
+.md p:first-child { margin-top: 0; }
+.md p:last-child { margin-bottom: 0; }
+.md ul, .md ol { padding-left: 20px; margin: 6px 0; list-style: disc; }
+.md ol { list-style: decimal; }
+.md strong { font-weight: 700; }
+.md code { background: var(--surface-low); padding: 1px 5px; border-radius: 4px; }
+
+/* ── Interaction states ─────────────────────────────────────────────────── */
+.tab-btn[aria-selected="true"] { color: var(--primary); border-color: var(--primary); }
+.choice input:checked + div { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-fixed); background: #f8fbff; }
+.choice input:focus-visible + div { outline: 2px solid var(--primary); outline-offset: 2px; }
+details > summary { list-style: none; cursor: pointer; }
+details > summary::-webkit-details-marker { display: none; }
+details[open] > summary .chev { transform: rotate(90deg); }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+[data-tip] { position: relative; }
+#tooltip { position: fixed; pointer-events: none; z-index: 100; }
+
+@media print {
+  header, nav, .no-print { display: none !important; }
+  main { padding-top: 0 !important; }
+}
+
+/* ── Locked while a test runs ───────────────────────────────────────────────
+   The package setup and the single-question form are <fieldset class="lockable">.
+   While a test runs, eval.js sets fieldset.disabled, which disables every
+   control inside it at once; these rules make that visible. */
+fieldset.lockable { min-width: 0; margin: 0; padding: 0; border: 0; }
+fieldset.lockable:disabled .choice { cursor: not-allowed; }
+fieldset.lockable:disabled .choice > div { opacity: 0.45; }
+fieldset.lockable:disabled .choice input:checked + div { opacity: 1; }  /* the mode being run stays clear */
+/* only real controls — a link such as "Download template" keeps working */
+fieldset.lockable:disabled .field,
+fieldset.lockable:disabled label.btn-secondary,
+fieldset.lockable:disabled button.btn-secondary,
+fieldset.lockable:disabled button.btn-ghost { opacity: 0.55; cursor: not-allowed; }
+fieldset.lockable:disabled label.btn-secondary:hover,
+fieldset.lockable:disabled button.btn-secondary:hover { background: var(--primary-fixed); }
+fieldset.lockable:disabled button.btn-ghost:hover { background: transparent; }

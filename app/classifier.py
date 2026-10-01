@@ -1,227 +1,145 @@
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.naive_bayes import MultinomialNB
-from sklearn.svm import LinearSVC
-from sklearn.pipeline import make_pipeline
+"""
+Query routing and labeling — rule-based, no trained model.
 
-# --- Class Mapping ---
-CLASS_NAMES = {
-    0: "Board Games (Monopoly / Ticket to Ride)",
-    1: "General Taglish Tax Query",
-    2: "Non-Tax / Chit-Chat",
-    3: "BIR Tax Query (Source Year: 2001)",
-    4: "BIR Tax Query (Source Year: 2002)",
-    5: "BIR Tax Query (Source Year: 2003)",
-    6: "BIR Tax Query (Source Year: 2022)",
-    7: "BIR Tax Query (Source Year: 2023)",
-    8: "BIR Tax Query (Source Year: 2024)",
-    9: "BIR Tax Query (Source Year: 2025)",
-    10: "BIR Tax Query (Source Year: 2026)",
-    11: "Frequently Asked Questions (FAQ)"
-}
+Two separate jobs, deliberately kept apart:
 
-# --- Training Data (10 samples per class to maintain class balance) ---
-TRAINING_QUERIES = [
-    # Class 0: Board Games
-    "strategy sa ticket to ride",
-    "monopoly property trading rules",
-    "ticket to ride longest train route",
-    "how do I get out of jail in monopoly",
-    "How many points does the longest continuous train get in Ticket to Ride?",
-    "paano manalo sa monopoly game",
-    "pwede ba mag-mortgage ng property sa monopoly",
-    "how much cash do you receive when passing GO in monopoly",
-    "paano gamitin ang locomotives sa ticket to ride board game",
-    "ano ang gagawin kapag na-bankrupt sa monopoly",
+1. ROUTING (before retrieval): `get_year_filter()` pulls an explicit source
+   year out of the query text with a regex. This is the only thing that
+   ever influences retrieval, via a hard Chroma `where` filter.
 
-    # Class 1: General Taglish Tax Query
-    "paano ba magbayad ng buwis sa Pilipinas",
-    "kailangan ko ba ng official receipt para sa negosyo ko",
-    "ano ang ibig sabihin ng value added tax o vat",
-    "paano mag compute ng income tax ng regular employee",
-    "saan magbabayad ng taunang income tax",
-    "kailangan ba mag-register sa BIR kapag freelance worker",
-    "ano ang mga documents na kailangan para makakuha ng TIN number",
-    "magkano ang surcharge o penalty kapag late filing ng tax return",
-    "paano mag-register ng bagong business sa Revenue District Office",
-    "ano ang ibig sabihin ng tax exemption sa BIR",
+2. LABELING (after retrieval): `label_from_docs()` reports which corpus
+   categories (year folders / faq) the retrieved evidence actually came
+   from, read straight from each chunk's `year` metadata. This is exactly
+   accurate by construction — it describes the sources, so it can't
+   disagree with them.
 
-    # Class 2: Chit-Chat / Non-Tax
-    "magandang araw sayo Sagot AI",
-    "kamusta ka naman ngayong araw",
-    "hello how are you doing today",
-    "kumain ka na ba kanina",
-    "ano ang pangalan mo at ano ang silbi mo",
-    "hello pwede ba magtanong tungkol sa kung ano-ano",
-    "I wanna ask something about life in general",
-    "maraming salamat sa tulong mo ha",
-    "ano ang paborito mong kulay chatbot",
-    "sige mag-ingat ka bye bye",
+The previous TF-IDF + Naive Bayes classifier was removed: it was trained on
+73 short examples, nearly all of which were issuance citations the regex
+already handles perfectly, and its prediction was never used for anything
+except the label shown in the UI.
+"""
 
-    # Class 3: BIR Tax 2001
-    "RULING NO. 1-2001",
-    "paano mag file ng ITR for 2001 taxable year",
-    "may changes ba sa income tax return guidelines nung 2001",
-    "2001 tax deadline and compliance requirements",
-    "2001 bir circular and ruling regulations",
-    "ano ang nakasaad sa BIR ruling noong 2001",
-    "mga revenue issuances para sa taong 2001",
-    "BIR Ruling 1-2001 official digest",
-    "mga revenue regulations nung 2001 tungkol sa withholding",
-    "source documents and tax issuances for year 2001",
+import re
+from typing import List, Optional
 
-    # Class 4: BIR Tax 2002
-    "saan makikita ang 2002 tax table",
-    "update sa vat regulations nitong 2002",
-    "RULING NO. 2-2002",
-    "ano ang bagong batas sa tax noong 2002",
-    "2002 bir revenue regulation guidelines",
-    "ano ang nakasulat sa ruling 2-2002 ng BIR",
-    "mga tax circulars and table changes para sa taong 2002",
-    "may memo ba nung 2002 tungkol sa final withholding tax",
-    "BIR ruling no. 2-2002 digest summary",
-    "mga memorandum circulars issued during 2002",
+from langchain_core.documents import Document
 
-    # Class 5: BIR Tax 2003
-    "REVENUE BULLETIN NO. 2-2003",
-    "Ano ba ang nakasulat sa Revenue Bulletin No. 2-2003?",
-    "Paano i-compute ang estate tax under RR 2-2003 or bulletin 2003?",
-    "Active pa ba yung legal guidelines ng Revenue Bulletin nung 2003?",
-    "Saan makakakuha ng kopya ng BIR Revenue Bulletin 2-2003?",
-    "ano ang mga probisyon sa Revenue Bulletin 2-2003",
-    "tax rules and updates under RR 2-2003",
-    "may issuance ba ang BIR nung 2003 regarding estate tax assessment",
-    "Revenue Bulletin 2003 official copy digest",
-    "guidelines ng BIR para sa 2003 tax issuances",
+# Years that actually exist as folders/metadata in this corpus (see
+# app/database.py's ingestion log). An explicit citation for a year
+# outside this set can't be satisfied by anything in the DB, so it must
+# NOT be turned into a Chroma filter — that would just guarantee a
+# no-answer instead of letting hybrid retrieval try the rest of the corpus
+# (e.g. a typo'd year, or a real citation from a year not yet ingested).
+KNOWN_YEARS = {"2001", "2002", "2003", "2022", "2023", "2024", "2025", "2026"}
 
-    # Class 6: BIR Tax 2022
-    "REVENUE DELEGATION AUTHORITY ORDER NO. 1-2022",
-    "Ano ang nakasaad sa RDAO No. 1-2022 ng BIR?",
-    "Paano i-apply yung Revenue Delegation Authority Order nung 2022?",
-    "Sino ang authorized mag-sign under RDAO 1-2022?",
-    "May circular ba nung 2022 tungkol sa signature authorities?",
-    "RDAO No. 1-2022 official digest and summary",
-    "authority to sign revenue tax documents under RDAO 1-2022",
-    "ano ang mga update sa BIR delegated authorities noong 2022",
-    "sino ang authorized signers sa BIR batay sa 2022 order",
-    "RDAO 1-2022 guidelines for regional directors and officers",
+# Shown when nothing was retrieved / nothing supported an answer.
+NO_SOURCES_LABEL = "No matching sources"
 
-    # Class 7: BIR Tax 2023
-    "RMC No. 30-2023",
-    "Ano ang mga bagong guidelines sa ilalim ng RMC No. 33-2023?",
-    "Paano i-comply ang requirements ng RMC No. 49-2023v3?",
-    "Meron ba kayong digest ng RMO No. 16-2023 Digest FINAL?",
-    "Ano ang nakasaad sa RMO No. 26-2023 Final Digest?",
-    "Paano ang VAT refund rules ayon sa RR 9-2023?",
-    "Ano ang bagong withholding tax requirement sa RR 16-2023 nitong 2023?",
-    "Ano ang circular ng BIR nung 2023 tungkol sa online sellers withholding tax?",
-    "Pakipaliwanag naman ang mga tax changes sa ilalim ng revenue regulation 16-2023",
-    "Ano-ano ang mga importanteng tax circulars at issuances para sa taong 2023?",
-
-    # Class 8: BIR Tax 2024
-    "RMC No. 1-2024",
-    "Ano ang nilalaman at implementing rules ng RMC No. 3-2024?",
-    "Saan makikita ang digest para sa RMO No. 43-2024 Digest?",
-    "Ano ang mga binago sa audit guidelines ayon sa RMO No. 46-2024 Digest?",
-    "Paano ang bagong filing rules at deadlines sa ilalim ng RR 5-2024 final?",
-    "Ano ang mga tax classification updates under RR 8-2024?",
-    "May bagong revenue regulation ba nitong 2024 para sa Ease of Paying Taxes Act?",
-    "Paano i-implement ang taxpayer classification at invoicing rules under RR 8-2024?",
-    "Ano ang latest issuances ng BIR para sa taxable year 2024?",
-    "RR No. 8-2024 implementing guidelines para sa micro at small taxpayers",
-
-    # Class 9: BIR Tax 2025
-    "RAO No. 5-2025 (Digest)",
-    "Ano ang nakasaad sa administrative order RAO No. 5-2025 Digest?",
-    "May summary ba kayo para sa RMC No. 11-2025 Digest?",
-    "Ano ang mga bagong probisyon sa ilalim ng RMO No. 30-2025 DIgest?",
-    "Ano ang revenue audit order guidelines noong 2025 under RAO 5-2025?",
-    "Paano mag-comply sa documentary requirements na nakasaad sa RMC No. 11-2025?",
-    "Ano ang bagong memorandum order ng BIR na inilabas nitong 2025?",
-    "May update ba sa operational tax guidelines sa ilalim ng RMO 30-2025?",
-    "Ano ang bagong issuance ng BIR para sa tax compliance nitong 2025?",
-    "RAO No. 5-2025 digest summary tungkol sa audit procedures",
-
-    # Class 10: BIR Tax 2026
-    "RAO No. 1-2026 Digest",
-    "Ano ang mga patakaran at panuntunan sa RMC No. 4-2026 Digest?",
-    "Paano ipapatupad ang administrative guidelines ng RMO NO. 5-2026?",
-    "Ano ang mga bagong tax rate o compliance rules sa ilalim ng RR No. 2-2026?",
-    "Meron bang bagong revenue regulation 2-2026 para sa taong 2026?",
-    "Ano ang nakasaad sa delegation order na RAO No. 1-2026 Digest?",
-    "Paano mag-comply sa circular guidelines ng BIR para sa taong 2026?",
-    "Ano ang bagong memo circular na RMO 5-2026 nitong 2026?",
-    "May circular ba ang BIR nitong 2026 tungkol sa electronic tax filing?",
-    "RR No. 2-2026 revenue regulations overview and summary",
-
-    # Class 11: Frequently Asked Questions (FAQ)
-    "Taxable ba ang 13th month pay at bonus kapag lumagpas sa 90,000 pesos?",
-    "Paano ba i-compute ang 8% preferential tax rate para sa purely self-employed?",
-    "Sino-sino ang qualified sa substituted filing ng ITR gamit ang BIR Form 2316?",
-    "Ano ang pagkakaiba ng 40% Optional Standard Deduction OSD sa Itemized Deductions?",
-    "Exempted ba sa Philippine income tax ang kinikita ng mga OFW at overseas seamen?",
-    "Kailan nagiging covered ang isang korporasyon sa 2% Minimum Corporate Income Tax o MCIT?",
-    "Paano ang computation ng 2% MCIT para sa sale of services at cost of services?",
-    "Ano ang tamang proseso kapag no payment ITR ang ifi-file sa Revenue District Office?",
-    "Pwede pa ba mag-amend ng income tax return kapag may Letter of Authority na mula sa BIR?",
-    "Pwede ko pa ba i-claim bilang dependent ang senior citizen kong magulang under sa TRAIN Law?"
-]
-
-# Generate labels programmatically: exactly 10 entries per class (120 total)
-LABELS = [class_id for class_id in range(12) for _ in range(10)]
-
-assert len(TRAINING_QUERIES) == len(LABELS), (
-    f"Mismatch: {len(TRAINING_QUERIES)} queries vs {len(LABELS)} labels"
-)
+# Matches the "<sequence number>-<year>" suffix every BIR issuance number
+# in this corpus uses: "1-2001", "14-2023", "34-2024", "001-2023", etc.
+# Capped at 3 digits for the sequence number (the corpus's highest is
+# "105-2023") specifically so it does NOT match a 4-digit year range like
+# "2024-2025" (school year, fiscal year, a date range) — "2024" would
+# overflow the {1,3} bound.
+_ISSUANCE_YEAR_RE = re.compile(r"\b\d{1,3}[A-Za-z]?-((?:20)\d{2})\b")
+_BARE_YEAR_RE = re.compile(r"\b(20\d{2})\b")
 
 
-def build_classifier(model_type: str = "naive_bayes"):
+def extract_explicit_year(query: str) -> Optional[str]:
     """
-    Build and train classifier.
-    model_type: 'naive_bayes' or 'svm'
+    Deterministically pull a source year out of the query text — no
+    guessing, no model. Two tiers, checked in order:
+
+    1. A formal issuance citation, e.g. "RMC 34-2024", "RR 2-2003",
+       "RULING NO. 1-2001", "RDAO No. 22-2025" — the "<number>-<year>"
+       pattern every issuance number in this corpus uses. Unambiguous by
+       construction: if "14-2023" is in the query, the year is 2023.
+
+    2. A bare year mention, e.g. "2001 tax deadline", "nung 2023".
+
+    A filter is applied only when the query points at exactly ONE year.
+    It backs off to None the moment a SECOND distinct year appears
+    anywhere — another citation ("RR 2-2003 as amended by RR 5-2025"), a
+    citation plus a bare year ("RMC 34-2024, still valid in 2026?"), two
+    bare years ("yung 2025 ruling, valid pa ba ngayong 2026?") or a range
+    ("2024-2025"). Filtering on one of them would hide the other year's
+    documents, often the amending issuance; unfiltered search still has
+    both available.
+
+    Years counted: every citation year (even one not in the corpus — a
+    question about "RR 5-2019 as amended by RR 3-2024" is about two years)
+    plus bare years that ARE in KNOWN_YEARS (a bare "2050" is more likely
+    an amount than a year, so it is ignored).
+
+    Returns None — not a guess — when no year is found, when the years
+    conflict, or when the single year isn't in KNOWN_YEARS: a filter that
+    can only ever match zero documents is strictly worse than no filter.
     """
-    if model_type == "svm":
-        model = make_pipeline(TfidfVectorizer(), LinearSVC())
-        print("🤖 Using SVM Classifier")
+    citation_years = {m.group(1) for m in _ISSUANCE_YEAR_RE.finditer(query)}
+    bare_years = {y for y in _BARE_YEAR_RE.findall(query) if y in KNOWN_YEARS}
+    years = citation_years | bare_years
+    if len(years) == 1:
+        year = next(iter(years))
+        if year in KNOWN_YEARS:
+            return year
+    return None
+
+
+def get_year_filter(query: str) -> Optional[str]:
+    """
+    Routing step, run BEFORE retrieval. Returns the year to hard-filter
+    Chroma on, or None to search the whole corpus.
+
+    Only an explicit in-corpus citation or unambiguous bare year is ever
+    enforced. A wrong hard filter excludes the correct chunks entirely, so
+    when the query gives no explicit signal the search stays unfiltered.
+    """
+    year = extract_explicit_year(query)
+    print(f"\n🔍 [Router] Query: '{query}'")
+    if year:
+        print(f"📅 [Year Filter Applied]: {year}  (explicit year in query)")
     else:
-        model = make_pipeline(TfidfVectorizer(), MultinomialNB())
-        print("🤖 Using Naive Bayes Classifier")
-
-    model.fit(TRAINING_QUERIES, LABELS)
-    return model
+        print("📅 [Year Filter]: none — searching the whole corpus (no single in-corpus year)")
+    return year
 
 
-def classify_query(model, query: str):
+def _describe(categories: List[str]) -> str:
+    if categories == ["faq"]:
+        return "FAQ"
+    years = [c for c in categories if c != "faq"]
+    parts = []
+    if years:
+        noun = "Year" if len(years) == 1 else "Years"
+        parts.append(f"BIR Tax Query (Source {noun}: {', '.join(years)})")
+    if "faq" in categories:
+        parts.append("FAQ")
+    return " + ".join(parts)
+
+
+def label_from_docs(docs: List[Document], max_categories: int = 3) -> str:
     """
-    Classify a query and return (class_id, label, year_filter).
-    year_filter is used to filter ChromaDB by year metadata.
+    Labeling step, run AFTER retrieval. Summarizes which corpus categories
+    the retrieved chunks came from, ordered by total RRF score (so the
+    category carrying the most evidence comes first), e.g.:
+
+        "BIR Tax Query (Source Year: 2024)"
+        "BIR Tax Query (Source Years: 2023, 2024)"
+        "FAQ"
+
+    Reads each chunk's `year` metadata (the folder category stamped at
+    ingestion) and the `_rrf_score` stamped by reciprocal_rank_fusion().
+    Chunks missing a score count equally. Returns NO_SOURCES_LABEL when
+    there are no chunks.
     """
-    predicted_class = model.predict([query])[0]
-    label           = CLASS_NAMES[predicted_class]
+    if not docs:
+        return NO_SOURCES_LABEL
 
-    # Map class to optional year filter for ChromaDB
-    year_filter = None
-    if predicted_class == 3:
-        year_filter = "2001"
-    elif predicted_class == 4:
-        year_filter = "2002"
-    elif predicted_class == 5:
-        year_filter = "2003"
-    elif predicted_class == 6:
-        year_filter = "2022"
-    elif predicted_class == 7:
-        year_filter = "2023"
-    elif predicted_class == 8:
-        year_filter = "2024"
-    elif predicted_class == 9:
-        year_filter = "2025"
-    elif predicted_class == 10:
-        year_filter = "2026"
-    elif predicted_class == 11:
-        year_filter = "faq"
+    scores: dict = {}
+    for doc in docs:
+        category = str(doc.metadata.get("year", "unknown"))
+        scores[category] = scores.get(category, 0.0) + float(
+            doc.metadata.get("_rrf_score", 1.0)
+        )
 
-    print(f"\n🔍 [Classifier] Query: '{query}'")
-    print(f"📌 [Classified as]: {label}")
-    if year_filter:
-        print(f"📅 [Year Filter Applied]: {year_filter}")
-
-    return predicted_class, label, year_filter
+    ranked = sorted(scores, key=lambda c: scores[c], reverse=True)[:max_categories]
+    return _describe(ranked)

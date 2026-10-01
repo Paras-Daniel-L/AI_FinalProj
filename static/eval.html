@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <!-- Page self-check: if something this page needs fails to load, say so on
+       the page in plain words instead of silently doing nothing. Inline styles
+       only, so it still shows when the Tailwind styles are what failed.
+       (.hidden, which keeps the tabs working without Tailwind, is in
+       static/css/eval.css — served by our own server, so it still loads.) -->
+  <script>
+    (function () {
+      var shown = {};
+      function show(msg) {
+        if (shown[msg]) return; shown[msg] = true;
+        var put = function () {
+          var box = document.getElementById('page-check');
+          if (!box) {
+            box = document.createElement('div'); box.id = 'page-check';
+            box.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:9999;background:#fef2f2;border:1px solid #fca5a5;color:#7f1d1d;border-radius:12px;padding:12px 16px;font:14px/1.45 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.15)';
+            document.body.appendChild(box);
+          }
+          var p = document.createElement('div'); p.textContent = '\u26a0 ' + msg; box.appendChild(p);
+        };
+        document.body ? put() : document.addEventListener('DOMContentLoaded', put);
+      }
+      if (location.protocol === 'file:') {
+        show('This page was opened as a file. Start the server (uvicorn main:app --host 127.0.0.1 --port 8000) and open http://localhost:8000' + (/eval/.test(location.pathname) ? '/eval' : '/') + ' in the browser instead.');
+      }
+      window.addEventListener('error', function (e) {
+        if (location.protocol === 'file:') return;  // the message above already explains it
+        var t = e.target;
+        var src = t && ((t.tagName === 'SCRIPT' && t.src) || (t.tagName === 'LINK' && t.rel === 'stylesheet' && t.href));
+        if (src) {
+          show('Could not load ' + src + '. ' + (/cdn|googleapis/.test(src)
+            ? 'Check the internet connection, then refresh (Ctrl+F5).'
+            : 'Make sure the server is running and was restarted after updating the files, then refresh (Ctrl+F5).'));
+        } else if (e.message && !/tailwind is not defined/.test(e.message)) {  // reported by the load check below
+          show('Script error: ' + e.message + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : ''));
+        }
+      }, true);
+      window.addEventListener('load', function () {
+        if (!window.tailwind) show('The page styles (cdn.tailwindcss.com) did not load. Check the internet connection, then refresh (Ctrl+F5).');
+      });
+    })();
+  </script>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>SagotAI · Evaluation</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet"/>
+
+  <!-- Same pinned markdown parser + sanitizer as the chatbot: chatbot answers
+       are markdown, and every one goes through DOMPurify before display. -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@18.0.14/lib/marked.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.16/dist/purify.min.js"></script>
+
+  <!-- The page's own styles. Linked BEFORE Tailwind so a utility class in the
+       HTML wins over these component classes on a tie. -->
+  <link rel="stylesheet" href="/static/css/eval.css"/>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script id="tailwind-config">
+    // Same design tokens as static/index.html (the chatbot), so both pages
+    // read as one product.
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            "surface": "#f8fafc", "surface-bright": "#ffffff",
+            "surface-container-lowest": "#ffffff", "surface-container-low": "#f1f5f9",
+            "surface-container": "#e2e8f0", "surface-container-high": "#cbd5e1",
+            "on-surface": "#0f172a", "on-surface-variant": "#475569",
+            "outline": "#94a3b8", "outline-variant": "#cbd5e1",
+            "primary": "#2563eb", "primary-fixed": "#dbeafe", "on-primary": "#ffffff",
+            "on-primary-fixed-variant": "#1d4ed8",
+            "error": "#ef4444", "error-container": "#fee2e2", "on-error-container": "#7f1d1d"
+          },
+          spacing: { "space-2xs": "0.125rem", "space-xs": "0.25rem", "space-sm": "0.5rem", "space-md": "1rem",
+                     "space-lg": "1.5rem", "space-xl": "2rem", "space-2xl": "3rem", "gutter": "1.25rem",
+                     "gutter-desktop": "1.5rem" },
+          fontFamily: { sans: ["Inter", "system-ui", "-apple-system", "Segoe UI", "sans-serif"] },
+          fontSize: {
+            "display-lg": ["36px", { lineHeight: "44px", letterSpacing: "-0.02em", fontWeight: "700" }],
+            "headline-md": ["22px", { lineHeight: "30px", letterSpacing: "-0.01em", fontWeight: "600" }],
+            "headline-sm": ["18px", { lineHeight: "26px", letterSpacing: "-0.005em", fontWeight: "600" }],
+            "body-lg": ["16px", { lineHeight: "26px" }], "body-md": ["14px", { lineHeight: "22px" }],
+            "body-sm": ["13px", { lineHeight: "18px" }],
+            "label-md": ["12px", { lineHeight: "16px", letterSpacing: "0.02em", fontWeight: "600" }],
+            "label-sm": ["11px", { lineHeight: "14px", letterSpacing: "0.04em", fontWeight: "600" }]
+          }
+        }
+      }
+    };
+  </script>
+</head>
+<body class="bg-surface text-on-surface antialiased min-h-screen text-body-md">
+
+  <!-- Header: same look as the chatbot's -->
+  <header class="fixed top-0 left-0 right-0 h-16 bg-surface/90 backdrop-blur-xl z-50 shadow-[0_1px_8px_rgba(0,0,0,0.04)] px-4 md:px-gutter-desktop">
+    <div class="h-16 w-full max-w-6xl mx-auto flex items-center justify-between gap-3">
+      <a href="/" class="flex items-center gap-space-md min-w-0" title="Back to the chatbot">
+        <span class="text-headline-md text-primary tracking-tight font-bold whitespace-nowrap">SagotAI</span>
+        <span class="inline-flex items-center gap-1 px-space-sm py-space-2xs bg-primary-fixed text-on-primary-fixed-variant rounded-full text-label-md whitespace-nowrap">
+          <span class="material-symbols-outlined text-[14px]">analytics</span>Evaluation
+        </span>
+      </a>
+      <div class="flex items-center gap-space-sm">
+        <span id="judge-chip" class="hidden items-center gap-1 px-space-sm py-space-2xs bg-surface-container-low text-on-surface-variant rounded-full text-label-md" title="The independent model that grades the answers"></span>
+        <a href="/" class="inline-flex items-center gap-space-xs px-space-md py-space-xs rounded-full bg-surface-container-lowest text-primary hover:bg-surface-container transition-colors text-label-md shadow-sm">
+          <span class="material-symbols-outlined text-[16px]">chat</span><span class="hidden sm:inline">Back to chatbot</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <nav class="fixed top-16 left-0 right-0 z-40 bg-surface/95 backdrop-blur border-b border-surface-container">
+    <div class="max-w-6xl mx-auto px-2 md:px-gutter-desktop flex gap-1 overflow-x-auto" role="tablist" aria-label="Evaluation sections">
+      <button class="tab-btn flex items-center gap-1.5 px-3 py-3 border-b-2 border-transparent text-on-surface-variant hover:text-on-surface text-body-sm font-semibold whitespace-nowrap" role="tab" data-tab="guide" aria-selected="true">
+        <span class="material-symbols-outlined text-[18px]">menu_book</span>How it works</button>
+      <button class="tab-btn flex items-center gap-1.5 px-3 py-3 border-b-2 border-transparent text-on-surface-variant hover:text-on-surface text-body-sm font-semibold whitespace-nowrap" role="tab" data-tab="single" aria-selected="false">
+        <span class="material-symbols-outlined text-[18px]">quiz</span>Test one question</button>
+      <button class="tab-btn flex items-center gap-1.5 px-3 py-3 border-b-2 border-transparent text-on-surface-variant hover:text-on-surface text-body-sm font-semibold whitespace-nowrap" role="tab" data-tab="batch" aria-selected="false">
+        <span class="material-symbols-outlined text-[18px]">inventory_2</span>Test a package</button>
+      <button class="tab-btn flex items-center gap-1.5 px-3 py-3 border-b-2 border-transparent text-on-surface-variant hover:text-on-surface text-body-sm font-semibold whitespace-nowrap" role="tab" data-tab="thesis" aria-selected="false">
+        <span class="material-symbols-outlined text-[18px]">school</span>Thesis results</button>
+    </div>
+  </nav>
+
+  <main class="pt-[7.5rem] pb-space-2xl">
+    <div class="max-w-6xl mx-auto px-4 md:px-gutter-desktop">
+      <div id="banners" class="flex flex-col gap-3 mb-4"></div>
+
+      <!-- ================= GUIDE ================= -->
+      <section id="tab-guide" role="tabpanel" class="flex flex-col gap-space-2xl">
+        <div class="pt-space-md">
+          <h1 class="text-display-lg tracking-tight">Evaluate a tax chatbot's answers</h1>
+          <p class="text-body-lg text-on-surface-variant mt-2 max-w-3xl">
+            This tool scores chatbot answers on whether they are backed by documents, on topic, and correct.
+            It works for Sagot AI (run live) and for any other chatbot, such as BIR's REVIE, as long as you have its answer.
+          </p>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-space-lg">
+            <button data-goto="single" class="text-left bg-surface-container-lowest rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow border border-transparent hover:border-primary-fixed">
+              <span class="material-symbols-outlined text-primary text-[26px]">quiz</span>
+              <div class="text-headline-sm mt-2">Test one question</div>
+              <p class="text-body-sm text-on-surface-variant mt-1">Type a question, see every score explained. Best for a live demo.</p>
+            </button>
+            <button data-goto="batch" class="text-left bg-surface-container-lowest rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow border border-transparent hover:border-primary-fixed">
+              <span class="material-symbols-outlined text-primary text-[26px]">inventory_2</span>
+              <div class="text-headline-sm mt-2">Test a package</div>
+              <p class="text-body-sm text-on-surface-variant mt-1">Upload many questions at once (a spreadsheet) and get averages and statistics.</p>
+            </button>
+            <button data-goto="thesis" class="text-left bg-surface-container-lowest rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow border border-transparent hover:border-primary-fixed">
+              <span class="material-symbols-outlined text-primary text-[26px]">school</span>
+              <div class="text-headline-sm mt-2">See the thesis results</div>
+              <p class="text-body-sm text-on-surface-variant mt-1">RQ1, RQ2 and RQ3 from the full T-TED evaluation run.</p>
+            </button>
+          </div>
+        </div>
+
+        <!-- Four data points -->
+        <div>
+          <h2 class="text-headline-md">The four data points</h2>
+          <p class="text-on-surface-variant mt-1 max-w-3xl">Every evaluation is built from the same four pieces. Some come from you, some from the chatbot.
+            The example is question A2 from the thesis dataset.</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4" id="datapoints"></div>
+          <div class="mt-4 bg-surface-container-lowest rounded-xl p-4 shadow-sm flex gap-3 items-start">
+            <span class="material-symbols-outlined text-on-surface-variant">translate</span>
+            <p class="text-body-sm text-on-surface-variant"><b class="text-on-surface">Optional fifth field: expected language.</b>
+              Mark each question as <i>english</i> or <i>taglish</i> (Filipino counts as taglish). It is only used for the three
+              language-trigger scores, which test whether Sagot AI correctly notices a Taglish question.</p>
+          </div>
+        </div>
+
+        <!-- Metrics -->
+        <div>
+          <h2 class="text-headline-md">What each score means</h2>
+          <p class="text-on-surface-variant mt-1 max-w-3xl">All scores run from 0 to 1, where higher is better, except the False Positive Rate, where lower is better.
+            Answers are graded by an independent judge model that is not part of Sagot AI, so the system never grades itself.</p>
+          <div id="metric-guide" class="mt-4 flex flex-col gap-space-lg"></div>
+          <p class="text-body-sm text-on-surface-variant mt-4 max-w-3xl">
+            <span class="material-symbols-outlined text-[16px] align-[-3px]">info</span>
+            Labels such as “Mostly supported” are a reading aid chosen for this tool, not official RAGAS cut-offs.
+            A score that cannot be computed is shown as <b>—</b> with the reason, never as 0.</p>
+        </div>
+
+        <!-- Stats -->
+        <div>
+          <h2 class="text-headline-md">Reading the statistics</h2>
+          <p class="text-on-surface-variant mt-1 max-w-3xl">When two sets of answers are compared (English vs Taglish, or Sagot AI vs REVIE), the tool runs the tests from the SOP.</p>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            <div class="bg-surface-container-lowest rounded-xl p-5 shadow-sm">
+              <div class="text-headline-sm">Which test</div>
+              <p class="text-body-sm text-on-surface-variant mt-1">Shapiro–Wilk first checks whether the score differences look normally distributed. If yes, a
+                <b>paired t-test</b> is used; if not, the <b>Wilcoxon signed-rank</b> test.</p>
+            </div>
+            <div class="bg-surface-container-lowest rounded-xl p-5 shadow-sm">
+              <div class="text-headline-sm">p-value</div>
+              <p class="text-body-sm text-on-surface-variant mt-1">Below <b>0.05</b> means the difference is statistically significant: unlikely to be chance.
+                Above 0.05 means no significant difference was found. That is not proof the two are equal, especially with few questions.</p>
+            </div>
+            <div class="bg-surface-container-lowest rounded-xl p-5 shadow-sm">
+              <div class="text-headline-sm">Effect size</div>
+              <p class="text-body-sm text-on-surface-variant mt-1">How big the difference is. For the t-test, <b>Cohen's d</b>: negligible &lt; 0.2, small 0.2–0.5, medium 0.5–0.8, large &gt; 0.8.
+                For Wilcoxon, <b>rank-biserial r</b>: negligible &lt; 0.1, small 0.1–0.3, medium 0.3–0.5, large ≥ 0.5 (the SOP: “r above 0.5 is large”).
+                Always report it with the p-value.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= SINGLE ================= -->
+      <section id="tab-single" role="tabpanel" class="hidden">
+        <div class="pt-space-md">
+          <h1 class="text-headline-md">Test one question</h1>
+          <p class="text-on-surface-variant mt-1">Three steps. Fields marked <span class="text-error">*</span> are required.</p>
+        </div>
+        <!-- Shown while a question is being evaluated: the form is locked (see runSingle in eval.js). -->
+        <div id="single-lock-note" class="hidden mt-space-lg"></div>
+        <form id="single-form" class="mt-space-lg" novalidate>
+          <fieldset id="single-lock" class="lockable flex flex-col gap-space-lg">
+          <div class="bg-surface-container-lowest rounded-xl p-5 shadow-sm">
+            <div class="flex items-center gap-2"><span class="step">1</span><h2 class="text-headline-sm">Which chatbot are you testing?</h2></div>
+            <div class="mode-choices grid grid-cols-1 md:grid-cols-3 gap-3 mt-4" data-scope="single"></div>
+            <div class="other-name-row hidden mt-4">
+              <!-- Same 3-column grid as the choice cards above, so the box is exactly one card wide. -->
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label class="field-label" for="single-other-name">Name of the other chatbot</label>
+                  <input id="single-other-name" class="field mt-1" value="REVIE" maxlength="60"/>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-surface-container-lowest rounded-xl p-5 shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2"><span class="step">2</span><h2 class="text-headline-sm">Enter the data</h2></div>
+              <div class="flex items-center gap-2">
+                <label for="example-picker" class="text-body-sm text-on-surface-variant whitespace-nowrap">Fill with a thesis example:</label>
+                <select id="example-picker" class="field !w-auto max-w-[16rem]"><option value="">Choose…</option></select>
+              </div>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-4">
+              <div class="flex flex-col gap-4">
+                <div>
+                  <label class="field-label" for="f-question">Question <span class="text-error">*</span></label>
+                  <p class="field-help">What the user asks, exactly as typed. For another chatbot, use the same question you asked it.</p>
+                  <textarea id="f-question" class="field" rows="3" maxlength="2000" required></textarea>
+                </div>
+                <div>
+                  <label class="field-label" for="f-ground-truth">Ground truth <span class="text-on-surface-variant font-normal">(recommended)</span></label>
+                  <p class="field-help">The correct answer, written from the official BIR document. Needed for Answer Correctness.</p>
+                  <textarea id="f-ground-truth" class="field" rows="3" maxlength="5000"></textarea>
+                </div>
+                <div class="sagot-only">
+                  <label class="field-label" for="f-language">Expected language <span class="text-on-surface-variant font-normal">(optional)</span></label>
+                  <p class="field-help">Is the question English or Taglish/Filipino? Used to check Sagot AI's language trigger.</p>
+                  <select id="f-language" class="field">
+                    <option value="">Not specified</option><option value="english">English</option><option value="taglish">Taglish or Filipino</option>
+                  </select>
+                </div>
+              </div>
+              <div class="flex flex-col gap-4">
+                <div class="other-only">
+                  <label class="field-label" for="f-other-answer"><span class="other-name">REVIE</span>'s answer <span class="text-error">*</span></label>
+                  <p class="field-help">Paste the other chatbot's reply exactly, including any refusal ("Sorry, I can't answer that").</p>
+                  <textarea id="f-other-answer" class="field" rows="3" maxlength="10000"></textarea>
+                </div>
+                <div class="other-only">
+                  <label class="field-label" for="f-other-context"><span class="other-name">REVIE</span>'s context <span class="text-on-surface-variant font-normal">(optional)</span></label>
+                  <p class="field-help">Only if that chatbot shows the document text it used. REVIE does not, so leave this blank; Groundedness and Context Relevance will then show “—”.</p>
+                  <textarea id="f-other-context" class="field" rows="3" maxlength="50000"></textarea>
+                </div>
+                <div class="sagot-auto bg-surface-container-low rounded-lg p-4 text-body-sm text-on-surface-variant flex gap-3">
+                  <span class="material-symbols-outlined text-primary">bolt</span>
+                  <p><b class="text-on-surface">Sagot AI's answer and context are filled in automatically.</b> The tool asks Sagot AI the question live,
+                    exactly as a user would get it (the answer cache is skipped), and records the document excerpts it read.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-surface-container-lowest rounded-xl p-5 shadow-sm flex flex-wrap items-center gap-4">
+            <div class="flex items-center gap-2"><span class="step">3</span><h2 class="text-headline-sm">Evaluate</h2></div>
+            <button id="single-run" type="submit" class="btn-primary"><span class="material-symbols-outlined text-[18px]">play_arrow</span>Evaluate</button>
+            <span id="single-estimate" class="text-body-sm text-on-surface-variant"></span>
+            <div id="single-error" class="w-full hidden"></div>
+          </div>
+          </fieldset>
+        </form>
+        <div id="single-result" class="mt-space-xl"></div>
+      </section>
+
+      <!-- ================= BATCH ================= -->
+      <section id="tab-batch" role="tabpanel" class="hidden">
+        <div class="pt-space-md">
+          <h1 class="text-headline-md">Test a package</h1>
+          <p class="text-on-surface-variant mt-1">Evaluate many questions in one go and get averages, the language-trigger scores, and statistics.</p>
+        </div>
+        <!-- Shown while a package test runs: its settings are locked (see syncBatchLock in eval.js). -->
+        <div id="batch-lock-note" class="hidden mt-space-lg"></div>
+        <fieldset id="batch-setup" class="lockable mt-space-lg flex flex-col gap-space-lg">
+          <div class="bg-surface-container-lowest rounded-xl p-5 shadow-sm">
+            <div class="flex items-center gap-2"><span class="step">1</span><h2 class="text-headline-sm">Which chatbot are you testing?</h2></div>
+            <div class="mode-choices grid grid-cols-1 md:grid-cols-3 gap-3 mt-4" data-scope="batch"></div>
+            <div class="other-name-row hidden mt-4">
+              <!-- Same 3-column grid as the choice cards above, so the box is exactly one card wide. -->
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label class="field-label" for="batch-other-name">Name of the other chatbot</label>
+                  <input id="batch-other-name" class="field mt-1" value="REVIE" maxlength="60"/>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-surface-container-lowest rounded-xl p-5 shadow-sm">
+            <div class="flex items-center gap-2"><span class="step">2</span><h2 class="text-headline-sm">Add your questions</h2></div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+              <div class="rounded-xl border border-surface-container p-4">
+                <div class="flex items-center gap-2 text-headline-sm !text-[16px]"><span class="material-symbols-outlined text-primary">upload_file</span>Upload a spreadsheet</div>
+                <p class="text-body-sm text-on-surface-variant mt-1">Save your sheet as <b>CSV</b> (Excel: File → Save As → CSV UTF-8). JSON also works. One row per question.</p>
+                <div class="flex flex-wrap gap-2 mt-3">
+                  <label class="btn-secondary cursor-pointer"><span class="material-symbols-outlined text-[18px]">folder_open</span>Choose file
+                    <input id="batch-file" type="file" accept=".csv,.json,text/csv,application/json" class="sr-only"/></label>
+                  <a href="/eval/api/template.csv" class="btn-ghost"><span class="material-symbols-outlined text-[18px]">download</span>Download template</a>
+                </div>
+              </div>
+              <div class="rounded-xl border border-surface-container p-4">
+                <div class="flex items-center gap-2 text-headline-sm !text-[16px]"><span class="material-symbols-outlined text-primary">dataset</span>Use the thesis dataset (T-TED)</div>
+                <p class="text-body-sm text-on-surface-variant mt-1">The 100 questions from the thesis, with ground truths, expected languages and REVIE's collected answers.</p>
+                <div class="flex flex-wrap gap-2 mt-3">
+                  <select id="ted-subset" class="field !w-auto">
+                    <option value="all">All 100 questions</option>
+                    <option value="A">Subset A: 20 English + 20 Taglish pairs</option>
+                    <option value="B">Subset B: 60 Taglish questions</option>
+                  </select>
+                  <button id="ted-load" type="button" class="btn-secondary"><span class="material-symbols-outlined text-[18px]">playlist_add</span>Load</button>
+                </div>
+              </div>
+            </div>
+            <details class="mt-4 rounded-lg bg-surface-container-low p-4">
+              <summary class="flex items-center gap-2 text-body-sm font-semibold"><span class="material-symbols-outlined chev text-[18px] transition-transform">chevron_right</span>What columns does the file need?</summary>
+              <div class="overflow-x-auto mt-3"><table class="w-full text-body-sm" id="column-guide"></table></div>
+              <p class="text-body-sm text-on-surface-variant mt-2">Column names are forgiving: <i>Query</i>, <i>Possible correct answer</i> and <i>REVIE response</i> are recognized too.</p>
+            </details>
+            <div id="batch-preview" class="mt-4"></div>
+          </div>
+
+          <div class="bg-surface-container-lowest rounded-xl p-5 shadow-sm flex flex-wrap items-center gap-4">
+            <div class="flex items-center gap-2"><span class="step">3</span><h2 class="text-headline-sm">Run</h2></div>
+            <button id="batch-run" type="button" class="btn-primary" disabled><span class="material-symbols-outlined text-[18px]">play_arrow</span>Start package test</button>
+            <span id="batch-estimate" class="text-body-sm text-on-surface-variant">Add questions first.</span>
+            <div id="batch-error" class="w-full hidden"></div>
+          </div>
+        </fieldset>
+        <div id="batch-progress" class="mt-space-lg"></div>
+        <div id="batch-results" class="mt-space-lg"></div>
+        <div id="batch-history" class="mt-space-xl"></div>
+      </section>
+
+      <!-- ================= THESIS ================= -->
+      <section id="tab-thesis" role="tabpanel" class="hidden">
+        <div class="pt-space-md">
+          <h1 class="text-headline-md">Thesis results</h1>
+          <p class="text-on-surface-variant mt-1 max-w-3xl">Results of the full evaluation on the T-TED dataset, read live from the offline run
+            (<code class="text-body-sm bg-surface-container-low px-1 rounded">python -m rag_eval.run_evaluation --subset all</code>). The run was blind:
+            every question was scored the same way, and whatever came out is reported.</p>
+        </div>
+        <div id="thesis-body" class="mt-space-lg flex flex-col gap-space-xl"></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Detail dialog (one question, both chatbots) -->
+  <dialog id="detail-dialog" class="rounded-xl p-0 w-[min(64rem,calc(100vw-2rem))] max-h-[calc(100vh-2rem)] backdrop:bg-slate-900/40 shadow-2xl">
+    <div class="sticky top-0 bg-surface-container-lowest border-b border-surface-container px-5 py-3 flex items-center justify-between z-10">
+      <div id="detail-title" class="text-headline-sm truncate pr-4"></div>
+      <button type="button" class="btn-ghost !px-2" onclick="document.getElementById('detail-dialog').close()" aria-label="Close">
+        <span class="material-symbols-outlined">close</span></button>
+    </div>
+    <div id="detail-body" class="p-5 bg-surface"></div>
+  </dialog>
+
+  <div id="tooltip" class="hidden bg-slate-900 text-white text-body-sm rounded-md px-2.5 py-1.5 shadow-lg max-w-xs"></div>
+
+  <script src="/static/js/eval.js"></script>
+</body>
+</html>

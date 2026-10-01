@@ -1,0 +1,5 @@
+# Additional packages for rag_eval/ only — install these on top of the main
+# project's requirements.txt. Kept separate because the production app has
+# no use for statistics libraries; only the evaluation tooling does.
+scipy==1.17.1
+numpy==2.4.4

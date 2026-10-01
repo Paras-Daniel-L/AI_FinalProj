@@ -1,6 +1,7 @@
 import argparse
 import os
 import shutil
+from collections import Counter
 
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
@@ -8,28 +9,23 @@ from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from .bm25_manager import BM25_INDEX_PATH, build_and_save_bm25
-from .embeddings import get_embedding_function
+from .cache import clear_cache
+from .embeddings import check_index_compatible, get_embedding_function, write_index_config
+from .ocr import choose_page_text, unavailable_reason
 
 load_dotenv()
 
 CHROMA_PATH = "chroma"
 DATA_PATH   = "data"
 
-# Subfolders recognized under data/
-YEAR_FOLDERS = [
-    "monopoly",
-    "ticket_to_ride",
-    "2001",
-    "2002",
-    "2003",
-    "2022",
-    "2023",
-    "2024",
-    "2025",
-    "2026",
-    "faq"
-]
+# Known year/topic folders — must match classifier.KNOWN_YEARS plus "faq".
+# This list only affects LOGGING (whether a folder's name is flagged as
+# "not filterable by the classifier") — it does not gate which folders get
+# loaded. Every folder under DATA_PATH that contains at least one PDF gets
+# loaded, no matter its name or depth. Board games are gone: the corpus is
+# scoped to BIR tax content only (data/monopoly, data/ticket_to_ride should
+# be deleted from disk and the DB re-ingested with --reset).
+YEAR_FOLDERS = ["2001", "2002", "2003", "2022", "2023", "2024", "2025", "2026", "faq"]
 
 
 def main():
@@ -44,49 +40,130 @@ def main():
     chunks    = split_documents(documents)
     add_to_chroma(chunks)
 
-    # ── Keep BM25 in sync with Chroma ────────────────────────────────────
-    print("🔧 Building BM25 index from ChromaDB...")
-    db = Chroma(persist_directory=CHROMA_PATH, embedding_function=get_embedding_function())
-    bm25 = build_and_save_bm25(db)
-    if bm25 is not None:
-        print(f"✅ BM25 index saved to {BM25_INDEX_PATH}")
-    else:
-        print("⚠️ No documents in ChromaDB — BM25 index was not built.")
+
+def _find_pdf_folders(data_path: str) -> list[str]:
+    """
+    Walk `data_path` recursively and return every directory (including
+    data_path itself) that directly contains at least one .pdf file.
+
+    This is the fix for the old "Mode A / Mode B" split in load_documents():
+    that logic only ever looked inside the six hardcoded YEAR_FOLDERS *or*
+    the flat data/ root, so a PDF sitting in any other subfolder (a new
+    year, a re-org, files dropped straight into data/ by /upload while
+    year folders also exist) was never picked up by PyPDFDirectoryLoader
+    at all — it would sit in ChromaDB's data/ directory on disk forever,
+    "uploaded", but invisible to the vector store.
+    """
+    folders = []
+    for root, _dirs, files in os.walk(data_path):
+        if any(f.lower().endswith(".pdf") for f in files):
+            folders.append(root)
+    return sorted(folders)
 
 
 def load_documents():
+    """
+    Load every PDF found anywhere under DATA_PATH, tagging each page with a
+    `year` metadata value derived from its immediate folder structure
+    relative to DATA_PATH:
+
+      data/2003/foo.pdf          -> year="2003"            (unchanged)
+      data/monopoly/rules.pdf    -> year="monopoly"         (unchanged)
+      data/foo.pdf                -> year="uncategorized"    (was SILENTLY
+                                       DROPPED before, whenever any
+                                       YEAR_FOLDERS subfolder existed)
+      data/2003/amended/foo.pdf  -> year="2003/amended"      (was SILENTLY
+                                       DROPPED before — not a listed folder)
+
+    Each folder is loaded with PyPDFDirectoryLoader in its default
+    non-recursive mode, one call per folder that directly holds PDFs, so a
+    file is never double-loaded and the `source` path PyPDFDirectoryLoader
+    stamps into metadata — which calculate_chunk_ids() below uses to build
+    the chunk id — stays identical to before for every file living in one
+    of the original YEAR_FOLDERS. That means chunks already indexed from
+    those folders keep the same ids and are NOT re-added by add_to_chroma's
+    existing-id dedup; only genuinely new/previously-missed files add new
+    rows.
+    """
     all_docs = []
 
-    # ── Check if any year subfolders exist ──────────────────────────────
-    year_folders_found = [
-        y for y in YEAR_FOLDERS
-        if os.path.exists(os.path.join(DATA_PATH, y))
-    ]
+    if not os.path.exists(DATA_PATH):
+        print(f"⚠️  Data path '{DATA_PATH}' does not exist — nothing to load.")
+        return all_docs
 
-    if year_folders_found:
-        # ── Mode A: Year subfolders exist → load per year ────────────────
-        print(f"📂 Year folders detected: {year_folders_found}")
-        for year in year_folders_found:
-            folder_path = os.path.join(DATA_PATH, year)
-            print(f"  📁 Loading from '{folder_path}/'...")
-            docs = PyPDFDirectoryLoader(folder_path).load()
+    pdf_folders = _find_pdf_folders(DATA_PATH)
+    if not pdf_folders:
+        print(f"⚠️  No PDFs found anywhere under '{DATA_PATH}/'.")
+        return all_docs
 
-            # Stamp every page with its folder key in metadata
-            for doc in docs:
-                doc.metadata["year"] = year
+    print(f"📂 Found PDFs in {len(pdf_folders)} folder(s):")
+    for f in pdf_folders:
+        print(f"   - {f}")
 
-            print(f"     ✅ {len(docs)} page(s) tagged as year={year}")
-            all_docs.extend(docs)
+    for folder_path in pdf_folders:
+        rel = os.path.relpath(folder_path, DATA_PATH)
+        category = "uncategorized" if rel == "." else rel.replace(os.sep, "/")
 
-    else:
-        # ── Mode B: No year subfolders → load flat data/ folder ──────────
-        print(f"📂 No year subfolders found. Loading PDFs from '{DATA_PATH}/' folder...")
-        docs = PyPDFDirectoryLoader(DATA_PATH).load()
-        print(f"✅ Loaded {len(docs)} page(s).")
+        print(f"\n  📁 Loading from '{folder_path}/' (category='{category}')...")
+        docs = PyPDFDirectoryLoader(folder_path).load()  # non-recursive by default
+
+        if not docs:
+            print("     ⚠️  0 page(s) loaded from this folder (unreadable/corrupt PDFs?).")
+            continue
+
+        empty_sources = set()
+        ocr_new = ocr_replaced = 0
+        for doc in docs:
+            doc.metadata["year"] = category
+            # Scanned pages: no text layer -> OCR; a poor hidden text layer on
+            # a full-page scan -> OCR and keep the cleaner text. Cached on disk
+            # by file hash, so --reset doesn't redo the work. See app/ocr.py.
+            text, how = choose_page_text(
+                doc.metadata.get("source", ""),
+                int(doc.metadata.get("page", 0)),
+                doc.page_content,
+            )
+            if how != "layer":
+                doc.page_content = text
+                doc.metadata["ocr"] = True
+                if how == "ocr":
+                    ocr_new += 1
+                else:
+                    ocr_replaced += 1
+            if not doc.page_content.strip():
+                empty_sources.add(doc.metadata.get("source", "?"))
+
+        print(f"     ✅ {len(docs)} page(s) tagged as year='{category}'")
+        if ocr_new:
+            print(f"     🔍 {ocr_new} scanned page(s) with no text read via OCR (may contain misread characters)")
+        if ocr_replaced:
+            print(f"     🔍 {ocr_replaced} scanned page(s) had a poor hidden text layer — replaced with OCR text")
+        if empty_sources:
+            why = unavailable_reason()
+            print(
+                f"     🚫 {len(empty_sources)} file(s) still have pages with NO text "
+                f"(scanned/blank; they index as nothing until OCR succeeds"
+                + (f" — OCR unavailable: {why}" if why else "")
+                + "):"
+            )
+            for src in sorted(empty_sources):
+                print(f"         - {src}")
+
         all_docs.extend(docs)
 
     print(f"\n📊 Total pages loaded: {len(all_docs)}")
+    _print_category_summary(all_docs)
     return all_docs
+
+
+def _print_category_summary(all_docs: list[Document]) -> None:
+    counts = Counter(d.metadata.get("year", "unknown") for d in all_docs)
+    print("📊 Pages per category:")
+    for cat, n in sorted(counts.items()):
+        note = ""
+        if cat not in YEAR_FOLDERS and cat != "uncategorized":
+            note = "  ⚠️  not in YEAR_FOLDERS — classifier's year_filter can never select this category"
+        print(f"   {cat}: {n} page(s){note}")
 
 
 def split_documents(documents: list[Document]):
@@ -110,11 +187,20 @@ def add_to_chroma(chunks: list[Document]):
     existing_ids    = set(db.get(include=[])["ids"])
     print(f"📦 Existing documents in DB: {len(existing_ids)}")
 
+    # Refuse to mix vectors made with different embedding settings (e.g. an
+    # index built before Jina task adapters were used) — see embeddings.py.
+    problem = check_index_compatible(CHROMA_PATH, bool(existing_ids))
+    if problem:
+        raise RuntimeError(problem)
+
     new_chunks = [c for c in chunks_with_ids if c.metadata["id"] not in existing_ids]
 
     if new_chunks:
         print(f"👉 Adding new documents: {len(new_chunks)}")
         db.add_documents(new_chunks, ids=[c.metadata["id"] for c in new_chunks])
+        write_index_config(CHROMA_PATH)
+        # New chunks can change the right answer to a previously cached question.
+        clear_cache()
         print("✅ Database updated successfully.")
     else:
         print("✅ No new documents to add.")
@@ -145,6 +231,9 @@ def clear_database():
     if os.path.exists(CHROMA_PATH):
         shutil.rmtree(CHROMA_PATH)
         print("🗑️  Database cleared.")
+    # Chunk ids survive a rebuild but their text may not (e.g. OCR changes), so
+    # cached answers from the old index must not outlive it.
+    clear_cache()
 
 
 if __name__ == "__main__":

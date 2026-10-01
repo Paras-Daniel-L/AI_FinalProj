@@ -3,3 +3,11 @@
 backup
 chroma
 .env
+venv
+ocr_cache
+.pytest_cache
+*.bak
+data
+__pycache__
+cache
+logs
