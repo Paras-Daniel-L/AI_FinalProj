@@ -26,6 +26,9 @@ import requests
 from dotenv import load_dotenv
 from langchain_core.embeddings import Embeddings
 
+from . import jina_http
+from .textproc import chunking_config
+
 load_dotenv()
 
 JINA_API_URL = "https://api.jina.ai/v1/embeddings"
@@ -34,15 +37,22 @@ QUERY_TASK = "retrieval.query"
 PASSAGE_TASK = "retrieval.passage"
 
 BATCH_SIZE = int(os.environ.get("JINA_BATCH_SIZE", "64"))
+# Also cap each request by ESTIMATED tokens, so one batch of long chunks
+# can't take a large bite of the per-minute token budget at once (pacing is
+# smoother and a 429 retry re-sends less). See app/jina_http.py.
+MAX_TOKENS_PER_REQUEST = int(os.environ.get("JINA_MAX_TOKENS_PER_REQUEST", "20000"))
 REQUEST_TIMEOUT = 60
-MAX_RETRIES = 3
+# Retries/backoff for HTTP 429 (rate limit) and 5xx: see app/jina_http.py.
 
 # Recorded next to the Chroma index so a stale index (built without task
 # adapters) is detected instead of silently degrading retrieval.
+# The chunking settings are part of it too: an index built from legacy
+# 800-character chunks must not be mixed with sentence-aligned ones.
 EMBEDDING_CONFIG: Dict[str, str] = {
     "model": MODEL_NAME,
     "query_task": QUERY_TASK,
     "passage_task": PASSAGE_TASK,
+    **chunking_config(),
 }
 CONFIG_FILENAME = "embedding_config.json"
 
@@ -70,33 +80,34 @@ class JinaTaskEmbeddings(Embeddings):
             "task": task,
             "input": texts,
         }
-        last_error = "unknown error"
-        for attempt in range(MAX_RETRIES):
-            try:
-                resp = self.session.post(
-                    JINA_API_URL, json=payload, timeout=REQUEST_TIMEOUT
-                )
-                # Retry rate limits / server errors; fail fast on other 4xx.
-                if resp.status_code == 429 or resp.status_code >= 500:
-                    last_error = f"HTTP {resp.status_code}"
-                else:
-                    body = resp.json()
-                    if "data" in body:
-                        items = sorted(body["data"], key=lambda e: e["index"])
-                        return [item["embedding"] for item in items]
-                    raise RuntimeError(
-                        f"Jina API error (HTTP {resp.status_code}): "
-                        f"{body.get('detail') or body}"
-                    )
-            except (requests.ConnectionError, requests.Timeout) as e:
-                last_error = str(e)
-            time.sleep(2 ** attempt)
-        raise RuntimeError(f"Jina API failed after {MAX_RETRIES} attempts: {last_error}")
+        try:
+            resp = jina_http.post(
+                JINA_API_URL, payload, timeout=REQUEST_TIMEOUT,
+                session=self.session, label="Jina embeddings",
+            )
+        except jina_http.JinaRetryError as e:
+            raise RuntimeError(str(e)) from e
+        body = resp.json()
+        if "data" in body:
+            items = sorted(body["data"], key=lambda e: e["index"])
+            return [item["embedding"] for item in items]
+        raise RuntimeError(
+            f"Jina API error (HTTP {resp.status_code}): {body.get('detail') or body}"
+        )
 
     def _embed(self, texts: List[str], task: str) -> List[List[float]]:
         out: List[List[float]] = []
-        for i in range(0, len(texts), BATCH_SIZE):
-            out.extend(self._post(texts[i : i + BATCH_SIZE], task))
+        batch: List[str] = []
+        batch_tokens = 0
+        for text in texts:
+            t = jina_http.estimate_tokens(text)
+            if batch and (len(batch) >= BATCH_SIZE or batch_tokens + t > MAX_TOKENS_PER_REQUEST):
+                out.extend(self._post(batch, task))
+                batch, batch_tokens = [], 0
+            batch.append(text)
+            batch_tokens += t
+        if batch:
+            out.extend(self._post(batch, task))
         return out
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:

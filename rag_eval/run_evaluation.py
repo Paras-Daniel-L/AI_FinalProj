@@ -81,7 +81,11 @@ METRICS = ("groundedness", "context_relevance", "answer_relevance", "answer_corr
 #   1: Groundedness, Context Relevance, Answer Relevance
 #   2: + Answer Correctness (vs. ground truth); reverse-engineered questions
 #      now written in the answer's own language
-SCORING_VERSION = 2
+#   3: Context Relevance over Python-split, numbered sentences (fixed
+#      denominator, label lines excluded, no output truncation) — see
+#      judge.py. Report v2 and v3 Context Relevance separately; they are not
+#      the same measurement.
+SCORING_VERSION = 3
 
 
 def _rebuild_context(retrieved: List[Dict[str, Any]]) -> str:
@@ -323,6 +327,8 @@ def write_outputs(rows: List[dataset.TedRow], done: Dict[Tuple[str, str], Dict[s
         json.dump([unit for _key, unit in sorted(done.items())], f, indent=2, ensure_ascii=False)
 
     summary = {
+        "pipeline": _pipeline_settings(),
+        "scoring_version": SCORING_VERSION,
         "n_rows_total": len(rows),
         "n_units_scored": len(done),
         "n_errors": sum(1 for u in done.values() if "error" in u),
@@ -336,6 +342,21 @@ def write_outputs(rows: List[dataset.TedRow], done: Dict[Tuple[str, str], Dict[s
     print(f"\nWrote {RESULTS_DIR}/raw_scores.json, scores_flat.csv, summary.json")
 
 
+def _pipeline_settings() -> Dict[str, Any]:
+    """What produced these answers — so a results folder says which pipeline
+    version (baseline vs. improved, reranker on/off, ...) it belongs to."""
+    try:
+        from app import llm, retrieval
+        from app.embeddings import EMBEDDING_CONFIG
+        return {
+            "generator": llm.GENERATOR_MODEL, "verifier": llm.VERIFIER_MODEL,
+            "generation_temperature": llm.GENERATION_TEMPERATURE,
+            "retrieval": retrieval.retrieval_settings(), "index": EMBEDDING_CONFIG,
+        }
+    except Exception as e:  # never let bookkeeping break the write
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--subset", choices=["A", "B", "all"], default="all",
@@ -345,7 +366,23 @@ def main() -> None:
                          help="ignore any existing results/checkpoint.jsonl and start clean (default: resume, "
                               "skipping (qid, side) units already checkpointed)")
     parser.add_argument("--rq2-only", action="store_true", help="compute only RQ2 (no API calls, no cost)")
+    parser.add_argument("--results-dir", default=None,
+                         help="write checkpoint/results here instead of rag_eval/results (e.g. "
+                              "rag_eval/results_v2) so a run of the improved pipeline never mixes with, "
+                              "or overwrites, the baseline run")
     args = parser.parse_args()
+
+    global RESULTS_DIR, CHECKPOINT_PATH
+    if args.results_dir:
+        RESULTS_DIR = Path(args.results_dir).resolve()
+        CHECKPOINT_PATH = RESULTS_DIR / "checkpoint.jsonl"
+        print(f"Results directory: {RESULTS_DIR}")
+
+    # Wait out Jina rate limits instead of letting the reranker fall back to
+    # plain top-k mid-run (an evaluated answer must come from the pipeline
+    # being evaluated, not its outage fallback).
+    from app import rerank as _rerank
+    _rerank.use_evaluation_retries()
 
     rows = dataset.load()
     print(f"Loaded {len(rows)} T-TED rows.")

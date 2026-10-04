@@ -181,7 +181,15 @@ def _retrieval_trace(docs) -> list:
             "retrievers": m.get("_source_retrievers"),
             "semantic_distance": m.get("_semantic_distance"),
             "bm25_score": m.get("_bm25_score"),
+            "rerank_score": m.get("_rerank_score"),
+            "id_match": m.get("_id_match"),
+            "compressed": bool(m.get("_compressed")),
+            "sentences_kept": m.get("_sentences_kept"),
+            # `text` is exactly what the generator/verifier saw (compressed
+            # when EVIDENCE_COMPRESSION=1); the uncompressed chunk is kept
+            # separately so a reviewer can check what was trimmed.
             "text": doc.page_content,
+            "full_text": m.get("_full_text"),
         })
     return out
 

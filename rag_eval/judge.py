@@ -40,18 +40,25 @@ Settings (env vars):
 """
 
 import os
+import re
 from dataclasses import dataclass, field
 from typing import List, Optional
 
 from dotenv import load_dotenv
 
 from app import llm_client
+from app.textproc import clean_pdf_text, split_sentences
 from .json_util import as_list, extract_json_value
 
 load_dotenv()
 
 JUDGE_MODEL = os.environ.get("JUDGE_MODEL", "").strip()
-JUDGE_MAX_TOKENS = int(os.environ.get("JUDGE_MAX_TOKENS", "1200"))
+# Was 1200: too small when the Context Relevance judge had to quote every
+# sentence of a 4,000-character context back verbatim — 4 of 100 Sagot AI
+# units (A8-EN, B3, B42, B53) lost their score to a cut-off JSON reply.
+# Context Relevance now returns sentence NUMBERS (short), but the other
+# judges still return lists, so the cap is raised too.
+JUDGE_MAX_TOKENS = int(os.environ.get("JUDGE_MAX_TOKENS", "2500"))
 JUDGE_TEMPERATURE = float(os.environ.get("JUDGE_TEMPERATURE", "0.0"))
 JUDGE_ANSWER_QUESTIONS = int(os.environ.get("JUDGE_ANSWER_QUESTIONS", "3"))
 JUDGE_DISABLE_THINKING = os.environ.get("JUDGE_DISABLE_THINKING", "0").strip() in ("1", "true", "True", "yes")
@@ -180,30 +187,64 @@ def judge_groundedness(context: str, answer: str) -> GroundednessResult:
 
 
 # ── Context Relevance: sentences in the retrieved context vs. the query ───
+#
+# Scoring version 3 (rag_eval/run_evaluation.py SCORING_VERSION): the
+# sentences are split IN PYTHON (app/textproc.split_sentences — the same
+# splitter ingestion and evidence compression use), numbered, and the judge
+# only returns the numbers of the relevant ones. Before (v1/v2) the judge
+# both split the context AND judged it, quoting every sentence back:
+#   * the denominator was whatever the judge decided — the quoted sentences
+#     covered between 39% and 123% of the actual context text across units,
+#     so two runs over the same context could have different totals;
+#   * quoting 20-40 sentences verbatim overflowed the 1200-token cap and lost
+#     4 units' scores entirely.
+# Source label lines ("[1] RMC No. 116-2024 Digest, p.1 (2024)") are citation
+# headers added by format_context(), not retrieved content, so they are not
+# counted as sentences.
 
 _CONTEXT_RELEVANCE_SYSTEM = """You are grading a retrieval system for a Philippine BIR tax Q&A \
-service under evaluation. You do not answer the query. Your only job is to go through the \
-RETRIEVED CONTEXT sentence by sentence and judge whether each sentence is relevant to answering \
-the QUERY.
+service under evaluation. You do not answer the query. You are given the QUERY and the \
+RETRIEVED CONTEXT already split into numbered sentences. Decide, for each sentence, whether it \
+is relevant to answering the QUERY.
 
-Split the context into sentences exactly as it reads (quote each one, do not paraphrase, \
-summarize, or merge sentences). A sentence is relevant if it states information that would help \
-answer the QUERY, even partially. A sentence that is on-topic (about BIR/tax matters generally) \
-but does not bear on THIS query is not relevant — judge against the specific query, not the \
-general subject area.
+A sentence is relevant if it states information that would help answer the QUERY, even \
+partially (a rule, condition, figure, date, exception or definition the answer needs). A \
+sentence that is on-topic (about BIR/tax matters generally, or about the same issuance) but does \
+not bear on THIS query is not relevant — judge against the specific query, not the general \
+subject area. The QUERY may be in English, Filipino or Taglish while the context is English: \
+judge meaning, not wording.
 
 Reply with a single JSON object and nothing else."""
 
 _CONTEXT_RELEVANCE_PROMPT = """QUERY:
 {query}
 
-RETRIEVED CONTEXT:
-{context}
+RETRIEVED CONTEXT (numbered sentences):
+{numbered}
 
-List every sentence in the RETRIEVED CONTEXT and whether it is relevant to the QUERY.
+Reply with ONLY this JSON object, listing the numbers of the relevant sentences (an empty list \
+if none is relevant):
+{{"relevant": [<sentence numbers>]}}"""
 
-Reply with ONLY this JSON object:
-{{"sentences": [{{"text": "<the sentence, quoted verbatim>", "relevant": true or false}}, ...]}}"""
+_LABEL_LINE_RE = re.compile(r"^\s*\[\d+\]\s")
+
+
+def context_sentences(context: str) -> List[str]:
+    """
+    The retrieved context as the list of sentences Context Relevance is
+    computed over: each "---"-separated excerpt block loses its "[n] source"
+    label line, is cleaned of PDF line wraps (so old, hard-wrapped chunks
+    split the same way as new ones), and is split with the shared sentence
+    splitter.
+    """
+    sentences: List[str] = []
+    for block in re.split(r"\n\s*---\s*\n", context or ""):
+        lines = block.strip().split("\n")
+        if lines and _LABEL_LINE_RE.match(lines[0]):
+            lines = lines[1:]
+        text = clean_pdf_text("\n".join(lines))
+        sentences.extend(s for s in split_sentences(text) if s.strip() != "…")
+    return sentences
 
 
 @dataclass
@@ -228,19 +269,40 @@ class ContextRelevanceResult:
         return sum(1 for s in self.sentences if s.relevant) / len(self.sentences)
 
 
+def _parse_indices(value, n: int) -> Optional[List[int]]:
+    """Valid 1-based sentence numbers from the judge's list (ints or numeric
+    strings); out-of-range numbers are ignored. None = not a list at all."""
+    items = as_list(value)
+    if items is None:
+        return None
+    out = set()
+    for item in items:
+        try:
+            k = int(str(item).strip().strip("[]"))
+        except (TypeError, ValueError):
+            continue
+        if 1 <= k <= n:
+            out.add(k)
+    return sorted(out)
+
+
 def judge_context_relevance(query: str, context: str) -> ContextRelevanceResult:
+    sentences = context_sentences(context)
+    if not sentences:
+        return ContextRelevanceResult(error="the context contains no sentences")
+    numbered = "\n".join(f"[{i}] {s}" for i, s in enumerate(sentences, start=1))
     raw = _chat(
-        _CONTEXT_RELEVANCE_PROMPT.format(query=query, context=context),
+        _CONTEXT_RELEVANCE_PROMPT.format(query=query, numbered=numbered),
         _CONTEXT_RELEVANCE_SYSTEM, "context_relevance",
     )
-    items = as_list(extract_json_value(raw, "sentences"))
-    if items is None:
-        return ContextRelevanceResult(raw=raw, error="judge did not return a parseable sentence list")
-    sentences = []
-    for item in items:
-        if isinstance(item, dict) and "text" in item:
-            sentences.append(SentenceJudgement(str(item["text"]), bool(item.get("relevant"))))
-    return ContextRelevanceResult(sentences=sentences, raw=raw)
+    indices = _parse_indices(extract_json_value(raw, "relevant"), len(sentences))
+    if indices is None:
+        return ContextRelevanceResult(raw=raw, error="judge did not return a parseable list of sentence numbers")
+    chosen = set(indices)
+    return ContextRelevanceResult(
+        sentences=[SentenceJudgement(s, i in chosen) for i, s in enumerate(sentences, start=1)],
+        raw=raw,
+    )
 
 
 # ── Answer Relevance: reverse-engineer questions from the answer ─────────

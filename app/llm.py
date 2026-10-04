@@ -66,8 +66,13 @@ MODEL_NAME = GENERATOR_MODEL  # kept for any code that still imports the old nam
 
 # Both calls are grounded/audit tasks, so they run (near-)deterministic.
 # Kept separate so they can be tuned independently for the thesis ablations.
-GENERATION_TEMPERATURE = 0.1
-VERIFIER_TEMPERATURE = 0.0
+# GENERATION_TEMPERATURE was a fixed 0.1; in a re-run of the 60 Subset B
+# questions only 8/58 answers came back identical (the retrieved context was
+# identical for 57/58), so per-question scores moved by up to a full point
+# between runs. 0.0 removes the sampling part of that variance; host-side
+# nondeterminism remains (pin providers + LLM_SEED for evaluation runs).
+GENERATION_TEMPERATURE = float(os.environ.get("GENERATION_TEMPERATURE", "0.0"))
+VERIFIER_TEMPERATURE = float(os.environ.get("VERIFIER_TEMPERATURE", "0.0"))
 # Generate -> verify attempts before falling back to the canned refusal.
 # Worst case = 2 * MAX_RAG_RETRIES model calls (3 attempts = 6 calls).
 MAX_RAG_RETRIES = int(os.environ.get("MAX_RAG_RETRIES", "3"))
@@ -381,9 +386,11 @@ def run_rag(
             attempt.status = "unparseable" if verdict.kind == VERDICT_UNPARSEABLE else "rejected"
             print(f"❌ [Verifier] attempt {number}/{max_retries}: {attempt.status} — {verdict.critique}")
             audit_notice = (
-                "\n[AUDIT NOTICE — a prior attempt failed grounding verification "
-                "with this critique; fix the issue below without changing your "
-                f"answer's language or inventing new facts]: {verdict.critique}\n"
+                "\n[AUDIT NOTICE — a prior attempt failed grounding verification. "
+                "For each flagged claim below, either DELETE it or restate it using "
+                "only what the excerpts literally say; do not replace it with a new "
+                "claim. Keep the supported parts of the answer, keep the same "
+                f"language, and keep citing excerpt numbers]: {verdict.critique}\n"
             )
         except Exception as e:  # LLMError, network, anything: record, stop, fail closed
             attempt.status = "error"

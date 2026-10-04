@@ -35,15 +35,74 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from rank_bm25 import BM25Okapi
 
+from . import rerank as reranker
+from .language import AMBIGUOUS_FILIPINO_MARKERS, ENGLISH_MARKERS, FILIPINO_MARKERS
 from .schemas import ConvMessage
+from .textproc import (
+    ids_in_metadata,
+    issuance_title,
+    overlap_coefficient,
+    parse_issuance_ids,
+    split_sentences,
+)
 
 # ── RRF configuration ────────────────────────────────────────────────────
 # All overridable via env vars so tuning doesn't require a code change.
-# Defaults match the constants the fusion logic previously had hardcoded.
+#
+# With the reranker ON (RERANKER=jina, the default) retrieval is two-stage:
+#   stage 1 (recall):    semantic top-20 + BM25 top-20 + issuance-id matches,
+#                        fused by RRF into a candidate pool of 30;
+#   stage 2 (precision): a cross-encoder scores every candidate against the
+#                        question, near-duplicates are dropped, and only the
+#                        chunks that clear the score threshold are kept
+#                        (1 to RERANK_MAX_DOCS, not a fixed 5).
+# With RERANKER=none the defaults fall back to the original single stage
+# (5 + 5 -> RRF top 5), so the old pipeline can be re-run as an ablation.
+RERANK_ON: bool = reranker.enabled()
 RRF_K: int = int(os.environ.get("RRF_K", "60"))
-SEMANTIC_TOP_K: int = int(os.environ.get("SEMANTIC_TOP_K", "5"))
-BM25_TOP_K: int = int(os.environ.get("BM25_TOP_K", "5"))
-RRF_FINAL_TOP_K: int = int(os.environ.get("RRF_FINAL_TOP_K", "5"))
+SEMANTIC_TOP_K: int = int(os.environ.get("SEMANTIC_TOP_K", "20" if RERANK_ON else "5"))
+BM25_TOP_K: int = int(os.environ.get("BM25_TOP_K", "20" if RERANK_ON else "5"))
+# Without the reranker this is the number of chunks passed to generation;
+# with it, this is the size of the candidate pool the reranker scores.
+RRF_FINAL_TOP_K: int = int(os.environ.get("RRF_FINAL_TOP_K", "30" if RERANK_ON else "5"))
+# Fallback used when the reranker is on but fails for a request (API outage):
+# the original behavior — the RRF top 5.
+FALLBACK_TOP_K: int = int(os.environ.get("FALLBACK_TOP_K", "5"))
+
+# ── Reranker dynamic cut ─────────────────────────────────────────────────
+# Keep a candidate when its rerank score is >= RERANK_MIN_SCORE AND
+# >= RERANK_RELATIVE x the best candidate's score; always keep at least
+# RERANK_MIN_DOCS and at most RERANK_MAX_DOCS. These defaults are starting
+# points — calibrate them on a DEV set (not T-TED) with
+#   python -m rag_eval.retrieval_eval --sweep
+# which reports gold-source recall vs. chunks kept for a grid of values.
+RERANK_MIN_SCORE: float = float(os.environ.get("RERANK_MIN_SCORE", "0.15"))
+RERANK_RELATIVE: float = float(os.environ.get("RERANK_RELATIVE", "0.4"))
+RERANK_MIN_DOCS: int = int(os.environ.get("RERANK_MIN_DOCS", "1"))
+RERANK_MAX_DOCS: int = int(os.environ.get("RERANK_MAX_DOCS", "3"))
+# Added to the rerank score of a chunk that belongs to an issuance the user
+# named ("ayon sa RR 14-2022"). The question says which document it is
+# about; a small boost lets that break ties without overriding a much more
+# relevant chunk from another issuance (e.g. one that amends it).
+ID_MATCH_BOOST: float = float(os.environ.get("ID_MATCH_BOOST", "0.15"))
+ID_MATCH_TOP_K: int = int(os.environ.get("ID_MATCH_TOP_K", "8"))
+# Two kept chunks whose word sets overlap this much (|A∩B| / min(|A|,|B|))
+# say the same thing (a Digest and the full issuance, or overlapping chunks);
+# only the higher-scored one is kept and the slot goes to the next candidate.
+DEDUP_OVERLAP: float = float(os.environ.get("DEDUP_OVERLAP", "0.8"))
+
+# ── Evidence compression (sentence level) — OFF by default ───────────────
+# Even a perfectly chosen chunk mixes the sentence that answers the question
+# with sentences that don't (in the T-TED run, sending ONLY the chunks that
+# contained a relevant sentence still capped Context Relevance at ~0.43).
+# When on, every sentence of the kept chunks is scored by the reranker and
+# only the relevant ones (plus list lead-ins they depend on) are passed to
+# the generator. Turn on for an A/B run and check Answer Correctness does not
+# drop before adopting it.
+EVIDENCE_COMPRESSION: bool = os.environ.get("EVIDENCE_COMPRESSION", "0").strip() in ("1", "true", "True", "yes")
+SENTENCE_MIN_SCORE: float = float(os.environ.get("SENTENCE_MIN_SCORE", "0.1"))
+SENTENCE_RELATIVE: float = float(os.environ.get("SENTENCE_RELATIVE", "0.3"))
+SENTENCE_MIN_KEEP: int = int(os.environ.get("SENTENCE_MIN_KEEP", "2"))
 
 # ── Coarse relevance pre-filter (no-answer gate, layer 1 of 2) ───────────
 # This is the retrieval-layer half of the hybrid no-answer strategy: cheap,
@@ -87,10 +146,7 @@ def source_title(doc: Document) -> str:
     "data\\2024\\RMC No. 34-2024.pdf" -> "RMC No. 34-2024". Handles both
     Windows and POSIX separators; falls back to "Unknown source".
     """
-    source = str(doc.metadata.get("source") or "")
-    name = re.split(r"[\\/]", source)[-1]
-    name = re.sub(r"\.pdf$", "", name, flags=re.IGNORECASE).strip()
-    return name or "Unknown source"
+    return issuance_title(str(doc.metadata.get("source") or ""))
 
 
 def source_label(doc: Document, number: int) -> str:
@@ -296,25 +352,85 @@ def filter_by_relevance(
 
 _TOKEN_RE = re.compile(r"\w+(?:-\w+)*", re.UNICODE)
 
+# Function words carry no topic: dropped from the QUERY side only (BM25's IDF
+# already discounts them in documents). Filipino ones matter most — the
+# corpus is English, so "ang"/"ng"/"sa" are rare in it, which gives them a
+# HIGH idf and lets a stray "sa" pull in unrelated chunks.
+_QUERY_STOPWORDS = (
+    set(FILIPINO_MARKERS) | set(AMBIGUOUS_FILIPINO_MARKERS) | set(ENGLISH_MARKERS)
+    | {"a", "an", "of", "to", "in", "on", "at", "by", "be", "it", "its", "as", "if",
+       "any", "there", "need", "required", "ayon", "ilalim", "ukol", "tungkol",
+       "kailangan", "bang", "ba", "nga", "pa", "mag", "ni", "si", "kay"}
+)
 
-def tokenize(text: str) -> List[str]:
+# Filipino -> English tax vocabulary, used ONLY to add English BM25 terms to
+# a Filipino/Taglish query (the embedding model handles cross-lingual
+# matching on its own; BM25 can't). Additive: the original words are kept.
+# Deliberately limited to core, general tax vocabulary — topic words that
+# appear in specific T-TED questions were left out so the evaluation set
+# doesn't leak into the system. Extend it from a DEV set or real user logs.
+FILIPINO_TAX_GLOSSARY: Dict[str, str] = {
+    "buwis": "tax", "kita": "income", "kinita": "income", "sahod": "salary compensation",
+    "suweldo": "salary compensation", "sweldo": "salary compensation", "benta": "sales",
+    "bentahan": "sale sales", "binebenta": "sale sell", "bumili": "purchase", "bili": "purchase",
+    "bayad": "payment fee cost", "bayarin": "payment fee", "multa": "penalty",
+    "parusa": "penalty", "resibo": "receipt invoice", "negosyo": "business",
+    "negosyante": "business taxpayer", "empleyado": "employee", "manggagawa": "employee worker",
+    "porsyento": "percent rate", "porsiyento": "percent rate",
+    "taunang": "annual", "taon": "year annual", "buwanan": "monthly",
+    "rehistrado": "registered",
+    "pagpaparehistro": "registration", "magparehistro": "register registration",
+    "ari-arian": "property", "lupa": "land real property", "bahay": "house residential",
+   
+    "pagbabayad": "payment", "magbayad": "pay payment", "ibawas": "deduct deduction",
+    "bawas": "deduction", "kaltas": "withholding", "magkaltas": "withhold withholding",
+    "pagkakaltas": "withholding", "exempted": "exempt exemption", "libre": "exempt free",
+    "deadline": "deadline due date", "takdang": "due deadline", "petsa": "date",
+   
+    "kumpanya": "company corporation",
+    "korporasyon": "corporation", "dayuhan": "foreign nonresident", "mamamayan": "citizen",
+    "pamana": "estate inheritance", "regalo": "donation donor", "donasyon": "donation",
+    "upa": "rent lease", "paupahan": "lease rental",
+   
+   
+    "nagbebenta": "seller sell", "mamimili": "buyer customer",
+   
+}
+
+
+def tokenize(text: str, query: bool = False) -> List[str]:
     """
     Lowercased word tokens; hyphenated tokens are kept whole AND split, so
     an issuance number like "34-2024" matches "34-2024" and bare "2024".
+
+    query=True additionally drops function words and adds English glossary
+    terms for Filipino tax words (see FILIPINO_TAX_GLOSSARY).
     """
     tokens: List[str] = []
     for m in _TOKEN_RE.finditer((text or "").lower()):
         tok = m.group(0)
+        if query and tok in _QUERY_STOPWORDS:
+            continue
         tokens.append(tok)
         if "-" in tok:
             tokens.extend(tok.split("-"))
+        if query and tok in FILIPINO_TAX_GLOSSARY:
+            tokens.extend(FILIPINO_TAX_GLOSSARY[tok].split())
     return tokens
+
+
+def _bm25_text(doc: Document) -> str:
+    """A chunk's text for BM25: its context header (issuance title + subject,
+    stamped at ingestion) plus its content, so "RMC No. 19-2022" matches
+    page 5 of that issuance even though page 5 never names it."""
+    header = doc.metadata.get("context_header") or ""
+    return f"{header}\n{doc.page_content}" if header else doc.page_content
 
 
 class _BM25Index:
     def __init__(self, docs: List[Document]):
         self.docs = docs
-        self.bm25 = BM25Okapi([tokenize(d.page_content) for d in docs]) if docs else None
+        self.bm25 = BM25Okapi([tokenize(_bm25_text(d)) for d in docs]) if docs else None
 
     def search(self, query: str, k: int, year: Optional[str] = None) -> List[Document]:
         """
@@ -327,7 +443,7 @@ class _BM25Index:
         IDF goes to zero/negative on tiny corpora — every score would be
         non-positive and nothing would ever match.
         """
-        query_tokens = tokenize(query)
+        query_tokens = tokenize(query, query=True)
         if self.bm25 is None or not query_tokens:
             return []
         scores = self.bm25.get_scores(query_tokens)
@@ -384,7 +500,165 @@ def _semantic_search(
     return results
 
 
-def retrieve_docs(
+def _id_match_search(db: Chroma, query: str, ids: List[str], k: int) -> List[Document]:
+    """
+    Chunks that BELONG to an issuance the question names ("ayon sa RR
+    14-2022"), ranked by semantic similarity within that issuance. Needs the
+    `issuance_id` metadata stamped by sentence-mode ingestion; on an index
+    built without it this simply finds nothing.
+    """
+    if not ids:
+        return []
+    where = {"issuance_id": ids[0]} if len(ids) == 1 else {"issuance_id": {"$in": ids}}
+    results = []
+    for doc, distance in db.similarity_search_with_score(query, k=k, filter=where):
+        meta = dict(doc.metadata)
+        meta["_semantic_distance"] = float(distance)
+        results.append(Document(page_content=doc.page_content, metadata=meta))
+    return results
+
+
+def _rerank_text(doc: Document) -> str:
+    """What the cross-encoder reads for a chunk: header (issuance + subject) + text."""
+    return _bm25_text(doc)
+
+
+def dynamic_cut(
+    scored: List[Document],
+    min_score: Optional[float] = None,
+    relative: Optional[float] = None,
+    min_docs: Optional[int] = None,
+    max_docs: Optional[int] = None,
+    dedup_overlap: Optional[float] = None,
+) -> List[Document]:
+    """
+    `scored` is sorted by descending _rerank_score. Drops near-duplicates of
+    an already-kept chunk, then keeps chunks that clear both the absolute and
+    the relative threshold, within [min_docs, max_docs]. Parameters default
+    to the RERANK_* settings; rag_eval/retrieval_eval.py passes others to
+    sweep them offline.
+    """
+    min_score = RERANK_MIN_SCORE if min_score is None else min_score
+    relative = RERANK_RELATIVE if relative is None else relative
+    min_docs = RERANK_MIN_DOCS if min_docs is None else min_docs
+    max_docs = RERANK_MAX_DOCS if max_docs is None else max_docs
+    dedup_overlap = DEDUP_OVERLAP if dedup_overlap is None else dedup_overlap
+    if not scored:
+        return []
+    top = scored[0].metadata["_rerank_score"]
+    kept: List[Document] = []
+    for doc in scored:
+        if len(kept) >= max_docs:
+            break
+        if any(overlap_coefficient(doc.page_content, k.page_content) >= dedup_overlap for k in kept):
+            continue
+        score = doc.metadata["_rerank_score"]
+        passes = score >= min_score and score >= relative * top
+        if passes or len(kept) < min_docs:
+            kept.append(doc)
+    return kept
+
+
+def score_candidates(query: str, candidates: List[Document], query_ids: List[str]) -> List[Document]:
+    """Cross-encoder scores for every candidate (+ ID_MATCH_BOOST for chunks
+    of a named issuance), sorted best first. Raises reranker.RerankError."""
+    scores = reranker.rerank(query, [_rerank_text(d) for d in candidates])
+    scored = []
+    for doc, score in zip(candidates, scores):
+        meta = dict(doc.metadata)
+        own = meta.get("issuance_id") or ""
+        id_match = bool(own) and own in query_ids
+        meta["_rerank_raw"] = float(score)
+        meta["_id_match"] = id_match
+        meta["_rerank_score"] = float(score) + (ID_MATCH_BOOST if id_match else 0.0)
+        scored.append(Document(page_content=doc.page_content, metadata=meta))
+    scored.sort(key=lambda d: d.metadata["_rerank_score"], reverse=True)
+    return scored
+
+
+def rerank_and_cut(query: str, candidates: List[Document], query_ids: List[str]) -> List[Document]:
+    """
+    Stage 2 of retrieval: score every candidate with the cross-encoder, add
+    ID_MATCH_BOOST to chunks of an issuance the question names, then keep
+    only what clears the dynamic cut. Raises reranker.RerankError on failure
+    (retrieve_docs falls back to the RRF top-k).
+    """
+    scored = score_candidates(query, candidates, query_ids)
+    kept = dynamic_cut(scored)
+    summary = ", ".join(f"{d.metadata['_rerank_score']:.2f}" for d in scored[:8])
+    print(
+        f"🎯 [Rerank] top scores: {summary} | kept {len(kept)}/{len(scored)} "
+        f"(min={RERANK_MIN_SCORE}, rel={RERANK_RELATIVE}, max={RERANK_MAX_DOCS})"
+    )
+    return kept
+
+
+_LIST_LEAD_RE = re.compile(r"^\s*(\(?[a-zA-Z0-9]{1,4}[.)]|\([a-zA-Z0-9]{1,4}\)|[•▪●◦\-–])\s")
+
+
+def compress_evidence(query: str, docs: List[Document]) -> List[Document]:
+    """
+    Sentence-level evidence selection (EVIDENCE_COMPRESSION=1). Every
+    sentence of the kept chunks is scored by the reranker in one call; a
+    sentence is kept when it clears SENTENCE_MIN_SCORE and SENTENCE_RELATIVE
+    x the best sentence, and the best SENTENCE_MIN_KEEP sentences are always
+    kept. A kept list item also keeps the sentence that introduces the list
+    (the one ending in ":"), since "(a) ... has not exceeded ₱500,000" means
+    nothing without "shall not withhold if:". Omitted runs are marked " … ".
+
+    The generator, the verifier and the evaluation all see the compressed
+    text (it is what retrieval returned), so the scores stay honest. The full
+    chunk text is kept in metadata["_full_text"] for the trace. A chunk with
+    no kept sentence is dropped. On any reranker failure the chunks are
+    returned uncompressed.
+    """
+    per_doc = [split_sentences(d.page_content) for d in docs]
+    flat = [(i, j, s) for i, sents in enumerate(per_doc) for j, s in enumerate(sents)]
+    if not flat:
+        return docs
+    try:
+        scores = reranker.rerank(query, [s for _i, _j, s in flat])
+    except reranker.RerankError as e:
+        print(f"⚠️  [Compress] reranker failed, passing chunks uncompressed: {e}")
+        return docs
+
+    best = max(scores)
+    order = sorted(range(len(flat)), key=lambda n: scores[n], reverse=True)
+    keep = {n for n in order[:SENTENCE_MIN_KEEP]}
+    keep |= {n for n, sc in enumerate(scores) if sc >= SENTENCE_MIN_SCORE and sc >= SENTENCE_RELATIVE * best}
+    keep_pairs = {(flat[n][0], flat[n][1]) for n in keep}
+
+    # A kept list item pulls in the lead-in sentence (ending ":") above it.
+    for (i, j) in list(keep_pairs):
+        if _LIST_LEAD_RE.match(per_doc[i][j]):
+            for back in range(j - 1, -1, -1):
+                keep_pairs.add((i, back))
+                if per_doc[i][back].rstrip().endswith(":") or not _LIST_LEAD_RE.match(per_doc[i][back]):
+                    break
+
+    out: List[Document] = []
+    for i, doc in enumerate(docs):
+        idx = sorted(j for (d, j) in keep_pairs if d == i)
+        if not idx:
+            continue
+        parts: List[str] = []
+        prev = -1
+        for j in idx:
+            if prev != -1 and j != prev + 1:
+                parts.append("…")
+            parts.append(per_doc[i][j])
+            prev = j
+        meta = dict(doc.metadata)
+        meta["_full_text"] = doc.page_content
+        meta["_compressed"] = True
+        meta["_sentences_kept"] = f"{len(idx)}/{len(per_doc[i])}"
+        out.append(Document(page_content=" ".join(parts), metadata=meta))
+    kept_n = sum(len([1 for (d, _j) in keep_pairs if d == i]) for i in range(len(docs)))
+    print(f"🗜️  [Compress] kept {kept_n}/{len(flat)} sentence(s) across {len(out)} chunk(s)")
+    return out or docs
+
+
+def retrieve_candidates(
     query: str,
     year_filter: Optional[str],
     db: Chroma,
@@ -393,24 +667,16 @@ def retrieve_docs(
     rrf_k: int = RRF_K,
     final_top_k: int = RRF_FINAL_TOP_K,
 ) -> List[Document]:
-    """
-    Hybrid retrieval: run dense (Chroma semantic) and sparse (BM25)
-    retrieval independently — BOTH restricted to `year_filter` when one is
-    given — then fuse their rankings with `reciprocal_rank_fusion()`.
+    """Stage 1 only (see retrieve_docs): the RRF-fused candidate list."""
+    query_ids = parse_issuance_ids(query)
+    if query_ids:
+        print(f"🔖 [Issuance] query names: {', '.join(query_ids)}")
 
-    year_filter is only ever set from an explicit, in-corpus year/citation
-    in the query (see classifier.get_year_filter), so applying it to BM25
-    too can't hard-exclude the right chunks on an ML misguess the way the
-    old classifier-driven filter could.
-
-    A failure in either retriever is caught and logged; it degrades to
-    whatever the other retriever found rather than raising.
-    """
     semantic_results: List[Document] = []
     try:
         semantic_results = _semantic_search(db, query, semantic_top_k, year_filter)
         if semantic_results:
-            dists = ", ".join(f"{d.metadata['_semantic_distance']:.3f}" for d in semantic_results)
+            dists = ", ".join(f"{d.metadata['_semantic_distance']:.3f}" for d in semantic_results[:8])
             print(f"📏 [Semantic] distances (best first): {dists}")
     except Exception as e:
         print(f"⚠️  [Retrieval] semantic search failed, continuing without it: {e}")
@@ -423,18 +689,93 @@ def retrieve_docs(
         print(f"⚠️  [Retrieval] BM25 search failed, continuing without it: {e}")
         bm25_results = []
 
-    if not semantic_results and not bm25_results:
-        print("🔀 [RRF] both retrievers returned 0 results — nothing to fuse")
+    id_results: List[Document] = []
+    if query_ids:
+        try:
+            id_results = _id_match_search(db, query, query_ids, ID_MATCH_TOP_K)
+            print(f"🔖 [Issuance] {len(id_results)} chunk(s) from the named issuance(s)")
+        except Exception as e:
+            print(f"⚠️  [Retrieval] issuance-id search failed, continuing without it: {e}")
+
+    if not semantic_results and not bm25_results and not id_results:
+        print("🔀 [RRF] all retrievers returned 0 results — nothing to fuse")
         return []
 
-    fused = reciprocal_rank_fusion(
-        [semantic_results, bm25_results],
-        k=rrf_k,
-        top_k=final_top_k,
-        source_labels=["semantic", "bm25"],
-    )
+    lists, labels = [semantic_results, bm25_results], ["semantic", "bm25"]
+    if id_results:
+        lists.append(id_results)
+        labels.append("issuance_id")
+    return reciprocal_rank_fusion(lists, k=rrf_k, top_k=final_top_k, source_labels=labels)
+
+
+def retrieve_docs(
+    query: str,
+    year_filter: Optional[str],
+    db: Chroma,
+    semantic_top_k: int = SEMANTIC_TOP_K,
+    bm25_top_k: int = BM25_TOP_K,
+    rrf_k: int = RRF_K,
+    final_top_k: int = RRF_FINAL_TOP_K,
+) -> List[Document]:
+    """
+    Hybrid retrieval.
+
+    Stage 1 (recall): dense (Chroma semantic) and sparse (BM25) retrieval run
+    independently — BOTH restricted to `year_filter` when one is given — plus,
+    when the question names an issuance number, a semantic search restricted
+    to that issuance's chunks. The ranked lists are fused with
+    `reciprocal_rank_fusion()`.
+
+    Stage 2 (precision, when the reranker is on): `rerank_and_cut()` keeps
+    only the candidates a cross-encoder judges relevant (1..RERANK_MAX_DOCS),
+    then `compress_evidence()` optionally trims them to their relevant
+    sentences. If the reranker fails, the RRF top FALLBACK_TOP_K is used —
+    the original behavior.
+
+    year_filter is only ever set from an explicit, in-corpus year/citation
+    in the query (see classifier.get_year_filter), so applying it to BM25
+    too can't hard-exclude the right chunks on an ML misguess the way the
+    old classifier-driven filter could.
+
+    A failure in any retriever is caught and logged; it degrades to whatever
+    the others found rather than raising.
+    """
+    fused = retrieve_candidates(query, year_filter, db, semantic_top_k, bm25_top_k, rrf_k, final_top_k)
+    if not fused:
+        return []
+    query_ids = parse_issuance_ids(query)
+    use_reranker = RERANK_ON
+
+    if use_reranker and fused:
+        try:
+            fused = rerank_and_cut(query, fused, query_ids)
+        except reranker.RerankError as e:
+            print(f"⚠️  [Rerank] failed, falling back to RRF top {FALLBACK_TOP_K}: {e}")
+            fused = fused[:FALLBACK_TOP_K]
+        else:
+            if EVIDENCE_COMPRESSION and fused:
+                fused = compress_evidence(query, fused)
 
     # An empty return here (same as the "0 results" case above) is what
     # api.py treats as "insufficient evidence" and routes to a localized
     # no-answer response instead of generation.
     return filter_by_relevance(fused)
+
+
+def retrieval_settings() -> Dict[str, object]:
+    """Every retrieval setting that changes what the generator sees — part
+    of the answer-cache fingerprint (app/cache.py) and of evaluation logs."""
+    return {
+        "rrf_k": RRF_K, "semantic_top_k": SEMANTIC_TOP_K, "bm25_top_k": BM25_TOP_K,
+        "rrf_final_top_k": RRF_FINAL_TOP_K, "min_rrf_score": MIN_RRF_SCORE,
+        "min_retriever_corroboration": MIN_RETRIEVER_CORROBORATION,
+        "max_semantic_distance": MAX_SEMANTIC_DISTANCE,
+        "reranker": reranker.RERANK_MODEL if RERANK_ON else "none",
+        "rerank_min_score": RERANK_MIN_SCORE, "rerank_relative": RERANK_RELATIVE,
+        "rerank_min_docs": RERANK_MIN_DOCS, "rerank_max_docs": RERANK_MAX_DOCS,
+        "id_match_boost": ID_MATCH_BOOST, "id_match_top_k": ID_MATCH_TOP_K,
+        "dedup_overlap": DEDUP_OVERLAP, "fallback_top_k": FALLBACK_TOP_K,
+        "evidence_compression": EVIDENCE_COMPRESSION,
+        "sentence_min_score": SENTENCE_MIN_SCORE, "sentence_relative": SENTENCE_RELATIVE,
+        "sentence_min_keep": SENTENCE_MIN_KEEP,
+    }

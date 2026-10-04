@@ -10,8 +10,23 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from .cache import clear_cache
+from . import jina_http
 from .embeddings import check_index_compatible, get_embedding_function, write_index_config
 from .ocr import choose_page_text, unavailable_reason
+from .textproc import (
+    CHUNK_OVERLAP_SENTENCES,
+    CHUNK_SIZE,
+    CHUNKING_MODE,
+    build_vocab,
+    chunk_sentences,
+    clean_pdf_text,
+    context_header,
+    document_summary,
+    issuance_title,
+    parse_issuance_ids,
+    repair_split_words,
+    split_sentences,
+)
 
 load_dotenv()
 
@@ -26,6 +41,19 @@ DATA_PATH   = "data"
 # scoped to BIR tax content only (data/monopoly, data/ticket_to_ride should
 # be deleted from disk and the DB re-ingested with --reset).
 YEAR_FOLDERS = ["2001", "2002", "2003", "2022", "2023", "2024", "2025", "2026", "faq"]
+
+# ── Chunking settings ─────────────────────────────────────────────────────
+# CHUNKING_MODE=sentence (default): clean the PDF text, repair split words,
+#   pack WHOLE sentences into chunks of <= CHUNK_SIZE characters (1-sentence
+#   overlap), and tag each chunk with its issuance title, document summary and
+#   the issuance numbers it mentions (see app/textproc.py for why).
+# CHUNKING_MODE=legacy: the original RecursiveCharacterTextSplitter(800, 80)
+#   on raw page text — kept so the thesis can report the before/after as an
+#   ablation. Changing the mode (or CHUNK_SIZE / CHUNK_OVERLAP_SENTENCES)
+#   changes the index config, so the app asks for `--reset` instead of mixing
+#   two kinds of chunks in one index.
+# (The values live in app/textproc.py so embeddings.py can record them in
+# the index config without importing this module.)
 
 
 def main():
@@ -167,14 +195,86 @@ def _print_category_summary(all_docs: list[Document]) -> None:
 
 
 def split_documents(documents: list[Document]):
-    chunks = RecursiveCharacterTextSplitter(
-        chunk_size=800,
-        chunk_overlap=80,
-        length_function=len,
-        is_separator_regex=False,
-    ).split_documents(documents)
-    print(f"✂️  Split into {len(chunks)} chunk(s).")
+    if CHUNKING_MODE == "legacy":
+        chunks = RecursiveCharacterTextSplitter(
+            chunk_size=800,
+            chunk_overlap=80,
+            length_function=len,
+            is_separator_regex=False,
+        ).split_documents(documents)
+        print(f"✂️  Split into {len(chunks)} chunk(s) (legacy character splitter).")
+        return chunks
+    return split_documents_by_sentence(documents)
+
+
+def split_documents_by_sentence(documents: list[Document]) -> list[Document]:
+    """
+    Sentence-aware chunking (CHUNKING_MODE=sentence):
+
+    1. clean every page (line wraps, broken hyphens — textproc.clean_pdf_text)
+       and repair words split by a stray space using the corpus's own
+       vocabulary ("shal l" -> "shall");
+    2. split each page into sentences and pack whole sentences into chunks of
+       <= CHUNK_SIZE characters, so no chunk starts or ends mid-sentence;
+    3. stamp metadata used by retrieval:
+         title           "RMC No. 116-2024 Digest" (from the filename)
+         doc_summary     the issuance's SUBJECT line / first sentence
+         context_header  title + summary — embedded and BM25-indexed together
+                         with the chunk, but never shown to the generator
+         issuance_id     the issuance this chunk belongs to ("RMC-116-2024")
+         issuance_ids    every issuance number the chunk is about (its own
+                         plus those it cites), comma-joined — Chroma metadata
+                         must be scalar
+
+    Pages are chunked one at a time, so the (source, page) -> chunk index
+    scheme in calculate_chunk_ids() is unchanged.
+    """
+    cleaned = [clean_pdf_text(d.page_content) for d in documents]
+    vocab = build_vocab(cleaned)
+    cleaned = [repair_split_words(t, vocab) for t in cleaned]
+
+    # One summary per source file, from its first page (lowest page number).
+    first_pages: dict = {}
+    for doc, text in zip(documents, cleaned):
+        src = doc.metadata.get("source", "")
+        page = int(doc.metadata.get("page", 0) or 0)
+        if src not in first_pages or page < first_pages[src][0]:
+            first_pages[src] = (page, text)
+    summaries = {src: document_summary(text) for src, (_p, text) in first_pages.items()}
+
+    chunks: list[Document] = []
+    for doc, text in zip(documents, cleaned):
+        if not text.strip():
+            continue
+        src = doc.metadata.get("source", "")
+        title = issuance_title(src)
+        own_ids = parse_issuance_ids(title)
+        header = context_header(title, summaries.get(src, ""))
+        for piece in chunk_sentences(split_sentences(text), CHUNK_SIZE, CHUNK_OVERLAP_SENTENCES):
+            ids = own_ids + [i for i in parse_issuance_ids(piece) if i not in own_ids]
+            meta = dict(doc.metadata)
+            meta.update(
+                title=title,
+                doc_summary=summaries.get(src, ""),
+                context_header=header,
+                issuance_id=own_ids[0] if own_ids else "",
+                issuance_ids=",".join(ids),
+            )
+            chunks.append(Document(page_content=piece, metadata=meta))
+
+    print(
+        f"✂️  Split into {len(chunks)} sentence-aligned chunk(s) "
+        f"(<= {CHUNK_SIZE} chars, {CHUNK_OVERLAP_SENTENCES}-sentence overlap)."
+    )
     return chunks
+
+
+def embedding_text(chunk: Document) -> str:
+    """What gets embedded for a chunk: its context header + its text. The
+    header lets a question naming an issuance (or its subject) find page 3
+    of that issuance, whose own text never repeats the title."""
+    header = chunk.metadata.get("context_header") or ""
+    return f"{header}\n{chunk.page_content}" if header else chunk.page_content
 
 
 def add_to_chroma(chunks: list[Document]):
@@ -197,13 +297,46 @@ def add_to_chroma(chunks: list[Document]):
 
     if new_chunks:
         print(f"👉 Adding new documents: {len(new_chunks)}")
-        db.add_documents(new_chunks, ids=[c.metadata["id"] for c in new_chunks])
+        # Stamp the config BEFORE adding, so if embedding stops partway (rate
+        # limit, network) the partial index is still recognized as compatible
+        # and simply re-running `python -m app.database` (WITHOUT --reset)
+        # resumes: chunks already stored are skipped by the id check above.
+        write_index_config(CHROMA_PATH)
+        est = sum(jina_http.estimate_tokens(embedding_text(c)) for c in new_chunks)
+        minutes = est / (jina_http.JINA_TPM * jina_http.JINA_SAFETY)
+        if minutes > 1:
+            print(f"   ≈{est:,} tokens to embed; at the Jina limit of {jina_http.JINA_TPM:,} tokens/min "
+                  f"this takes about {minutes:.0f} minute(s). Progress is saved as it goes.")
+        if any(c.metadata.get("context_header") for c in new_chunks):
+            _add_with_context_headers(db, new_chunks)
+        else:
+            db.add_documents(new_chunks, ids=[c.metadata["id"] for c in new_chunks])
         write_index_config(CHROMA_PATH)
         # New chunks can change the right answer to a previously cached question.
         clear_cache()
         print("✅ Database updated successfully.")
     else:
         print("✅ No new documents to add.")
+
+
+def _add_with_context_headers(db: Chroma, chunks: list[Document], batch: int = 256) -> None:
+    """
+    Store each chunk's CLEAN text as the document (that is what the generator
+    and verifier see), but embed header + text (embedding_text()). LangChain's
+    add_documents() can only embed the stored text itself, so this writes to
+    the underlying Chroma collection directly.
+    """
+    emb = get_embedding_function()
+    for i in range(0, len(chunks), batch):
+        part = chunks[i : i + batch]
+        vectors = emb.embed_documents([embedding_text(c) for c in part])
+        db._collection.upsert(
+            ids=[c.metadata["id"] for c in part],
+            embeddings=vectors,
+            documents=[c.page_content for c in part],
+            metadatas=[{k: v for k, v in c.metadata.items() if v is not None} for c in part],
+        )  # saved per batch: a later failure keeps everything stored so far
+        print(f"   … {min(i + batch, len(chunks))}/{len(chunks)} embedded")
 
 
 def calculate_chunk_ids(chunks):
@@ -237,4 +370,4 @@ def clear_database():
 
 
 if __name__ == "__main__":
-    main()
+    main()

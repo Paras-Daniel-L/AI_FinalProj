@@ -61,6 +61,12 @@ REQUEST_TIMEOUT: float = float(os.environ.get("LLM_TIMEOUT", "90"))
 MAX_RETRIES: int = int(os.environ.get("LLM_MAX_RETRIES", "3"))
 DISABLE_THINKING: bool = os.environ.get("LLM_DISABLE_THINKING", "1").strip() not in ("0", "false", "False", "")
 ALLOW_FALLBACKS: bool = os.environ.get("LLM_ALLOW_FALLBACKS", "1").strip() not in ("0", "false", "False", "")
+# Optional sampling seed sent with every call (LLM_SEED=42). Providers that
+# support it return the same completion for the same prompt more often; it is
+# a best-effort aid to reproducibility, not a guarantee (combine with pinned
+# GENERATOR_PROVIDERS and LLM_ALLOW_FALLBACKS=0 for evaluation runs).
+_seed = os.environ.get("LLM_SEED", "").strip()
+SEED: Optional[int] = int(_seed) if _seed else None
 _IS_OPENROUTER: bool = "openrouter.ai" in BASE_URL
 
 
@@ -218,6 +224,8 @@ def chat(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
+    if SEED is not None:
+        payload["seed"] = SEED
     payload.update(_extra_body(provider_order, thinking_off))
     headers = {
         "Authorization": f"Bearer {key}",
