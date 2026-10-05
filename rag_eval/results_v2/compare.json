@@ -1,0 +1,176 @@
+{
+  "n_questions": 100,
+  "metrics": {
+    "groundedness": {
+      "metric_name": "groundedness (after vs before)",
+      "n_pairs": 95,
+      "n_dropped": 5,
+      "mean_a": 0.9444611528822054,
+      "mean_b": 0.9368421052631577,
+      "mean_diff": 0.007619047619047617,
+      "normality_p": 1.6167250894374039e-13,
+      "is_normal": false,
+      "test_used": "wilcoxon signed-rank",
+      "statistic": 110.5,
+      "p_value": 0.600039562132096,
+      "significant": false,
+      "effect_size": 0.12648221343873517,
+      "effect_size_type": "rank_biserial_r",
+      "effect_size_label": "small",
+      "n_ties_dropped": 73,
+      "note": null
+    },
+    "context_relevance": {
+      "metric_name": "context_relevance (after vs before)",
+      "n_pairs": 100,
+      "n_dropped": 0,
+      "mean_a": 0.34086695249195254,
+      "mean_b": 0.3292005516413411,
+      "mean_diff": 0.011666400850611379,
+      "normality_p": 1.0375848206117709e-17,
+      "is_normal": false,
+      "test_used": "wilcoxon signed-rank",
+      "statistic": 15.0,
+      "p_value": 0.060546875,
+      "significant": false,
+      "effect_size": 0.6153846153846154,
+      "effect_size_type": "rank_biserial_r",
+      "effect_size_label": "large",
+      "n_ties_dropped": 88,
+      "note": null
+    },
+    "answer_relevance": {
+      "metric_name": "answer_relevance (after vs before)",
+      "n_pairs": 100,
+      "n_dropped": 0,
+      "mean_a": 0.6538109837826122,
+      "mean_b": 0.6430841554269832,
+      "mean_diff": 0.010726828355629109,
+      "normality_p": 1.1261673857671723e-09,
+      "is_normal": false,
+      "test_used": "wilcoxon signed-rank",
+      "statistic": 2083.0,
+      "p_value": 0.37062345438196576,
+      "significant": false,
+      "effect_size": 0.1052405498281787,
+      "effect_size_type": "rank_biserial_r",
+      "effect_size_label": "small",
+      "n_ties_dropped": 4,
+      "note": null
+    },
+    "answer_correctness": {
+      "metric_name": "answer_correctness (after vs before)",
+      "n_pairs": 99,
+      "n_dropped": 1,
+      "mean_a": 0.7274450857784192,
+      "mean_b": 0.711427769761103,
+      "mean_diff": 0.016017316017316013,
+      "normality_p": 5.43245818358676e-08,
+      "is_normal": false,
+      "test_used": "wilcoxon signed-rank",
+      "statistic": 656.5,
+      "p_value": 0.7671614086059435,
+      "significant": false,
+      "effect_size": 0.04716981132075472,
+      "effect_size_type": "rank_biserial_r",
+      "effect_size_label": "negligible",
+      "n_ties_dropped": 47,
+      "note": null
+    }
+  },
+  "by_subset": {
+    "A-EN": {
+      "groundedness": {
+        "before": 0.9587719298245613,
+        "after": 0.9482456140350877,
+        "n": 20
+      },
+      "context_relevance": {
+        "before": 0.3386760461760462,
+        "after": 0.3638167388167388,
+        "n": 20
+      },
+      "answer_relevance": {
+        "before": 0.6784071325945302,
+        "after": 0.6998473216795894,
+        "n": 20
+      },
+      "answer_correctness": {
+        "before": 0.787719298245614,
+        "after": 0.7814285714285714,
+        "n": 20
+      }
+    },
+    "A-TL": {
+      "groundedness": {
+        "before": 0.9219298245614035,
+        "after": 0.9803571428571429,
+        "n": 20
+      },
+      "context_relevance": {
+        "before": 0.3178509794299268,
+        "after": 0.3566375291375291,
+        "n": 20
+      },
+      "answer_relevance": {
+        "before": 0.638312804231073,
+        "after": 0.655176324403722,
+        "n": 20
+      },
+      "answer_correctness": {
+        "before": 0.6888095238095239,
+        "after": 0.7094246031746032,
+        "n": 20
+      }
+    },
+    "B": {
+      "groundedness": {
+        "before": 0.9345029239766082,
+        "after": 0.9305084745762712,
+        "n": 60
+      },
+      "context_relevance": {
+        "before": 0.3298252442002442,
+        "after": 0.3279601648351648,
+        "n": 60
+      },
+      "answer_relevance": {
+        "before": 0.6329002801031043,
+        "after": 0.6380104242765833,
+        "n": 60
+      },
+      "answer_correctness": {
+        "before": 0.6948082010582011,
+        "after": 0.7152380952380952,
+        "n": 60
+      }
+    }
+  },
+  "refusals": {
+    "before": {
+      "refused": 4,
+      "of": 100
+    },
+    "after": {
+      "refused": 2,
+      "of": 100
+    }
+  },
+  "contradictions": {
+    "before": {
+      "with_contradiction": 8,
+      "of": 99
+    },
+    "after": {
+      "with_contradiction": 12,
+      "of": 100
+    }
+  },
+  "mean_excerpts": {
+    "before": 2.91,
+    "after": 2.81
+  },
+  "before_dir": "rag_eval\\results",
+  "after_dir": "rag_eval\\results_v2",
+  "scoring_version": 3
+}
