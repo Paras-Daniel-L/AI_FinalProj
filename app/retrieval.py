@@ -81,6 +81,13 @@ RERANK_MIN_SCORE: float = float(os.environ.get("RERANK_MIN_SCORE", "0.15"))
 RERANK_RELATIVE: float = float(os.environ.get("RERANK_RELATIVE", "0.4"))
 RERANK_MIN_DOCS: int = int(os.environ.get("RERANK_MIN_DOCS", "1"))
 RERANK_MAX_DOCS: int = int(os.environ.get("RERANK_MAX_DOCS", "3"))
+# Dense-search floor (system v1.3): after the reranker's cut, the top
+# DENSE_FLOOR_K chunks by embedding similarity are added back if the cut
+# dropped them, so the generator never sees less evidence than a standard
+# dense-only RAG (the C1 baseline uses the same k). EVIDENCE_MAX_DOCS caps the
+# total. DENSE_FLOOR_K=0 turns it off (the behavior up to v1.2).
+DENSE_FLOOR_K: int = int(os.environ.get("DENSE_FLOOR_K", "4"))
+EVIDENCE_MAX_DOCS: int = int(os.environ.get("EVIDENCE_MAX_DOCS", "6"))
 # Added to the rerank score of a chunk that belongs to an issuance the user
 # named ("ayon sa RR 14-2022"). The question says which document it is
 # about; a small boost lets that break ties without overriding a much more
@@ -736,6 +743,45 @@ def retrieve_candidates(
     return fused
 
 
+def add_dense_floor(
+    kept: List[Document],
+    candidates: List[Document],
+    k: Optional[int] = None,
+    max_docs: Optional[int] = None,
+) -> List[Document]:
+    """
+    The reranker's picks (`kept`, in their order) followed by the top-`k`
+    candidates by semantic distance that are not already there, up to
+    `max_docs` in total. The candidates are the fused list the reranker
+    scored, so no extra search is made: a chunk the dense retriever ranked
+    near the top is put back even if the cross-encoder cut it. Duplicates
+    (same chunk id, or near-identical text per DEDUP_OVERLAP) are skipped.
+    Added chunks are marked metadata["_dense_floor"] = True.
+    """
+    k = DENSE_FLOOR_K if k is None else k
+    max_docs = EVIDENCE_MAX_DOCS if max_docs is None else max_docs
+    if k <= 0:
+        return list(kept)
+    dense = sorted((d for d in candidates if d.metadata.get("_semantic_distance") is not None),
+                   key=lambda d: d.metadata["_semantic_distance"])[:k]
+    out = list(kept)
+    seen = {d.metadata.get("id") for d in out if d.metadata.get("id")}
+    for doc in dense:
+        if len(out) >= max(max_docs, len(kept)):
+            break
+        doc_id = doc.metadata.get("id")
+        if doc_id and doc_id in seen:
+            continue
+        if any(overlap_coefficient(doc.page_content, o.page_content) >= DEDUP_OVERLAP for o in out):
+            continue
+        meta = dict(doc.metadata)
+        meta["_dense_floor"] = True
+        out.append(Document(page_content=doc.page_content, metadata=meta))
+        if doc_id:
+            seen.add(doc_id)
+    return out
+
+
 def retrieve_docs(
     query: str,
     year_filter: Optional[str],
@@ -774,6 +820,8 @@ def retrieve_docs(
     query_ids = parse_issuance_ids(query)
     use_reranker = RERANK_ON
 
+    candidates = fused  # the full fused list, kept for the dense floor below
+    reranked = False
     if use_reranker and fused:
         n_candidates = len(fused)
         progress.emit("rerank", "running", n_candidates=n_candidates)
@@ -784,12 +832,25 @@ def retrieve_docs(
             fused = fused[:FALLBACK_TOP_K]
             progress.emit("rerank", "failed", error=str(e), fallback_top_k=FALLBACK_TOP_K)
         else:
+            reranked = True
             if progress.active():
                 progress.emit("rerank", n_candidates=n_candidates, kept=len(fused),
                               min_score=RERANK_MIN_SCORE, relative=RERANK_RELATIVE, max_docs=RERANK_MAX_DOCS,
                               hits=_demo_hits(fused, "_rerank_score"))
-            if EVIDENCE_COMPRESSION and fused:
-                fused = compress_evidence(query, fused)
+        # Dense floor: put back the top dense hits the cut dropped (see add_dense_floor).
+        if DENSE_FLOOR_K > 0:
+            before = len(fused)
+            fused = add_dense_floor(fused, candidates)
+            added = [d for d in fused if d.metadata.get("_dense_floor")]
+            print(f"🧲 [Dense floor] added {len(added)} of the top {DENSE_FLOOR_K} dense hits "
+                  f"({before} → {len(fused)} excerpts, max {EVIDENCE_MAX_DOCS})")
+            if progress.active():
+                progress.emit("dense_floor", k=DENSE_FLOOR_K, added=len(added), total=len(fused),
+                              max_docs=EVIDENCE_MAX_DOCS, hits=_demo_hits(added, "_semantic_distance"))
+    # Optional sentence-level compression, as before: only after a successful
+    # rerank (it scores sentences with the same reranker).
+    if reranked and EVIDENCE_COMPRESSION and fused:
+        fused = compress_evidence(query, fused)
 
     # An empty return here (same as the "0 results" case above) is what
     # api.py treats as "insufficient evidence" and routes to a localized
@@ -810,6 +871,7 @@ def retrieval_settings() -> Dict[str, object]:
         "rerank_min_docs": RERANK_MIN_DOCS, "rerank_max_docs": RERANK_MAX_DOCS,
         "id_match_boost": ID_MATCH_BOOST, "id_match_top_k": ID_MATCH_TOP_K,
         "dedup_overlap": DEDUP_OVERLAP, "fallback_top_k": FALLBACK_TOP_K,
+        "dense_floor_k": DENSE_FLOOR_K, "evidence_max_docs": EVIDENCE_MAX_DOCS,
         "evidence_compression": EVIDENCE_COMPRESSION,
         "sentence_min_score": SENTENCE_MIN_SCORE, "sentence_relative": SENTENCE_RELATIVE,
         "sentence_min_keep": SENTENCE_MIN_KEEP,

@@ -76,9 +76,11 @@ class DemoRequest(BaseModel):
 def _systems_info() -> Dict[str, Dict[str, Any]]:
     from app.baselines import C1_TOP_K
     from app.llm import GENERATOR_MODEL, MAX_RAG_RETRIES, VERIFIER_MODEL
+    from app.retrieval import DENSE_FLOOR_K
     return {
         SAGOT: {"name": "Sagot AI", "tag": "Our framework",
-                "description": (f"Hybrid retrieval (semantic + BM25 + issuance match → RRF → reranker), "
+                "description": (f"Hybrid retrieval (semantic + BM25 + issuance match → RRF → reranker"
+                                f"{f', plus the top {DENSE_FLOOR_K} dense hits' if DENSE_FLOOR_K > 0 else ''}), "
                                 f"language trigger, {GENERATOR_MODEL} generator, {VERIFIER_MODEL} verifier "
                                 f"(up to {MAX_RAG_RETRIES} attempts), fails closed.")},
         C0: {"name": "C0", "tag": "LLM only",
@@ -89,6 +91,11 @@ def _systems_info() -> Dict[str, Dict[str, Any]]:
         C2: {"name": "C2", "tag": "REVIE",
              "description": "BIR's REVIE chatbot. Its answer is pasted in; its retrieval is not visible."},
     }
+
+
+def _version_label() -> str:
+    from app import version
+    return version.effective_label()
 
 
 def _judge_status() -> Dict[str, Any]:
@@ -116,6 +123,7 @@ def demo_config(request: Request):
             "You are viewing this page through the public link. The demo makes paid model calls, so it only "
             "runs on the host computer at http://localhost:8000/demo."),
         **_judge_status(),
+        "version": _version_label(),
         "generator_model": GENERATOR_MODEL,
         "verifier_model": VERIFIER_MODEL,
         "systems": _systems_info(),

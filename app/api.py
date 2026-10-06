@@ -27,6 +27,7 @@ from . import intent as intent_router
 from . import progress
 from . import recovery
 from . import trace as trace_log
+from .version import SYSTEM_VERSION, SYSTEM_VERSION_LABEL
 from .classifier import NO_SOURCES_LABEL, get_year_filter, label_from_docs
 from .computation import dialogue as computation
 from .computation.extract import extract as extract_inputs
@@ -45,7 +46,8 @@ from .schemas import ComputationState, QueryRequest, QueryResponse, StatusRespon
 
 load_dotenv()
 
-app = FastAPI(title="Sagot AI API", version="2.0.0")
+app = FastAPI(title="Sagot AI API", version=SYSTEM_VERSION)
+print(f"🏷️  Sagot AI system {SYSTEM_VERSION_LABEL}")
 
 # Public-sharing guard: per-IP rate limit, daily cap, /upload+/reset locked to
 # the host computer (see app/guard.py).
@@ -269,6 +271,7 @@ def _retrieval_trace(docs) -> list:
             "bm25_score": m.get("_bm25_score"),
             "rerank_score": m.get("_rerank_score"),
             "id_match": m.get("_id_match"),
+            "dense_floor": bool(m.get("_dense_floor")),
             "compressed": bool(m.get("_compressed")),
             "sentences_kept": m.get("_sentences_kept"),
             # `text` is exactly what the generator/verifier saw (compressed

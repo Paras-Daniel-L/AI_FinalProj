@@ -7,7 +7,12 @@ routing/request-handling code.
 Two versions of the GENERATION prompts exist (the verifier prompts are the
 same in both):
 
-    RAG_PROMPT_VERSION=2  (default) Concise. Modeled on the standard RAG
+    RAG_PROMPT_VERSION=3  (default, system v1.3) Version 2 plus: combine
+                          every relevant excerpt (the dense-search floor in
+                          app/retrieval.py now passes 4-6 excerpts) and room
+                          for up to about 80 words, so answers stay short but
+                          complete.
+    RAG_PROMPT_VERSION=2  (system v1.2) Concise. Modeled on the standard RAG
                           prompt (LangChain's "use the following pieces of
                           context..."), which gave shorter, more direct answers
                           in testing, while keeping everything the architecture
@@ -112,12 +117,37 @@ USER QUESTION: {question}
 
 Answer:"""
 
-RAG_PROMPT_VERSION = os.environ.get("RAG_PROMPT_VERSION", "2").strip()
-if RAG_PROMPT_VERSION not in ("1", "2"):
-    print(f"⚠️  [Prompts] RAG_PROMPT_VERSION={RAG_PROMPT_VERSION!r} is not 1 or 2; using 2.")
-    RAG_PROMPT_VERSION = "2"
-SYSTEM_PROMPT = SYSTEM_PROMPT_V2 if RAG_PROMPT_VERSION == "2" else SYSTEM_PROMPT_V1
-RAG_PROMPT = RAG_PROMPT_V2 if RAG_PROMPT_VERSION == "2" else RAG_PROMPT_V1
+# ── Version 3: concise and complete (default, system v1.3) ───────────────
+SYSTEM_PROMPT_V3 = SYSTEM_PROMPT_V2
+
+RAG_PROMPT_V3 = """Use the numbered excerpts below to answer the question at the end.
+
+- Use only facts stated in the excerpts. Do not add anything from memory.
+- The question may use other words, or Filipino or Taglish, while the excerpts use English legal wording: match on meaning. An excerpt that states the rule, condition, rate, date or purpose the question asks about answers it.
+- Several excerpts may each answer part of the question. Read all of them and combine what they say, citing each one you use.
+- If no excerpt addresses the question at all, reply with exactly {no_answer_sentinel} and nothing else. If the excerpts answer only part of the question, answer that part.
+- If excerpts give different figures for the same thing, use the one they present as current or revised.
+- Write in {user_language}.
+- Be concise but complete: one to four short sentences, about 80 words at most. Start with the direct answer (for a yes/no question: "Yes" or "No" in English, "Oo" or "Hindi" in Filipino or Taglish), then give the key figures, dates or conditions the question needs. Use a short list only when the question asks for several items. No background and no closing advice.
+- After each fact, cite the excerpt number it comes from, like [1].
+
+EXCERPTS:
+{context}
+
+CONVERSATION HISTORY:
+{history}
+{audit_notice}
+USER QUESTION: {question}
+
+Answer:"""
+
+_PROMPTS = {"1": (SYSTEM_PROMPT_V1, RAG_PROMPT_V1), "2": (SYSTEM_PROMPT_V2, RAG_PROMPT_V2),
+            "3": (SYSTEM_PROMPT_V3, RAG_PROMPT_V3)}
+RAG_PROMPT_VERSION = os.environ.get("RAG_PROMPT_VERSION", "3").strip()
+if RAG_PROMPT_VERSION not in _PROMPTS:
+    print(f"⚠️  [Prompts] RAG_PROMPT_VERSION={RAG_PROMPT_VERSION!r} is not 1, 2 or 3; using 3.")
+    RAG_PROMPT_VERSION = "3"
+SYSTEM_PROMPT, RAG_PROMPT = _PROMPTS[RAG_PROMPT_VERSION]
 
 # ── Hallucination verifier (output phase) ────────────────────────────────
 # A dedicated skeptical-auditor persona. Deliberately NOT SYSTEM_PROMPT: that

@@ -124,10 +124,14 @@ def test_sagot_pipeline_reports_every_architecture_step_in_order(fakes):
     assert response.outcome == "verified" and response.answer == ANSWER
     done = [e["step"] for e in events if e["status"] == "done"]
     expected = ["sanitize", "language", "intent", "route", "year_filter", "index", "cache",
-                "semantic", "bm25", "fusion", "rerank", "evidence", "generate", "verify", "final"]
+                "semantic", "bm25", "fusion", "rerank", "dense_floor", "evidence", "generate", "verify", "final"]
     assert done == expected
     rerank = next(e for e in events if e["step"] == "rerank" and e["status"] == "done")
     assert rerank["data"]["kept"] == 2 and rerank["data"]["n_candidates"] == 3   # 0.05 is cut
+    floor = next(e for e in events if e["step"] == "dense_floor")["data"]
+    assert floor["added"] == 1 and floor["total"] == 3                          # the cut chunk is put back
+    evidence = next(e for e in events if e["step"] == "evidence")["data"]["excerpts"]
+    assert len(evidence) == 3
     verify = next(e for e in events if e["step"] == "verify" and e["status"] == "done")
     assert verify["data"]["passed"] is True
     assert next(e for e in events if e["step"] == "final")["data"]["outcome"] == "verified"

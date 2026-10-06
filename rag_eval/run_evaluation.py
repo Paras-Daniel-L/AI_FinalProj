@@ -346,9 +346,11 @@ def _pipeline_settings() -> Dict[str, Any]:
     """What produced these answers — so a results folder says which pipeline
     version (baseline vs. improved, reranker on/off, ...) it belongs to."""
     try:
-        from app import llm, prompts, retrieval
+        from app import llm, prompts, retrieval, version
         from app.embeddings import EMBEDDING_CONFIG
         return {
+            "system_version": version.SYSTEM_VERSION,
+            "reproduces": version.effective_label(),
             "generator": llm.GENERATOR_MODEL, "verifier": llm.VERIFIER_MODEL,
             "generation_temperature": llm.GENERATION_TEMPERATURE,
             "rag_prompt_version": prompts.RAG_PROMPT_VERSION,

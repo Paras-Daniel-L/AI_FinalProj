@@ -36,7 +36,7 @@ const PIPES = {
 const STEP_STAGE = {
   sagot: { sanitize: 'input', language: 'language', intent: 'intent', route: 'intent', year_filter: 'intent',
            index: 'retrieval', cache: 'retrieval', semantic: 'retrieval', bm25: 'retrieval', issuance_id: 'retrieval',
-           fusion: 'fusion', rerank: 'rerank', evidence: 'rerank', computation: 'generate',
+           fusion: 'fusion', rerank: 'rerank', dense_floor: 'rerank', evidence: 'rerank', computation: 'generate',
            generate: 'generate', verify: 'verify', final: 'answer' },
   c0: { question: 'question', llm_only: 'llm', final: 'answer' },
   c1: { question: 'question', dense: 'dense', llm_rag: 'llm', final: 'answer' },
@@ -52,7 +52,7 @@ function liveText(sys, ev) {
       return 'Understanding the question';
     case 'index': case 'cache': case 'semantic': case 'bm25': case 'issuance_id': case 'fusion': case 'dense':
       return 'Searching the BIR documents';
-    case 'rerank': case 'evidence':
+    case 'rerank': case 'dense_floor': case 'evidence':
       return 'Picking the most relevant excerpts';
     case 'computation':
       return 'Computing with the official tax tables';
@@ -190,6 +190,11 @@ function describe(sys, ev) {
       return { title: 'Reranker (cross-encoder)', kind: 'done',
         body: `Kept <b>${esc(d.kept)}</b> of ${esc(d.n_candidates)} candidates (score ≥ ${esc(d.min_score)} and ≥ ${Math.round(d.relative * 100)}% of the best, at most ${esc(d.max_docs)}).${
           hitsList(d.hits, (s) => `score ${s.toFixed(2)}`)}` };
+    case 'dense_floor':
+      return { title: 'Dense-search floor', kind: 'done',
+        body: d.added
+          ? `Added back ${esc(d.added)} of the top ${esc(d.k)} meaning matches that the reranker left out, so the answer sees at least what a standard RAG would (${esc(d.total)} excerpts in total, at most ${esc(d.max_docs)}).${hitsList(d.hits, (s) => `dist ${s.toFixed(3)}`)}`
+          : `The reranker already kept the top ${esc(d.k)} meaning matches; nothing to add.` };
     case 'evidence':
       if (ev.status === 'failed') return { title: 'Evidence', body: 'No document cleared the relevance bar, so Sagot AI will not try to answer (it never guesses).', kind: 'warn' };
       return { title: 'Evidence given to the generator', kind: 'done',
@@ -356,6 +361,7 @@ async function loadConfig() {
     return;
   }
   const cfg = state.config;
+  if (cfg.version) $('live-chip').lastChild.textContent = `Live demo · ${cfg.version}`;
   buildGuide(cfg);
   if (!cfg.can_run) {
     banner('warn', esc(cfg.lock_reason));

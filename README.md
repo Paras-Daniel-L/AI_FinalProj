@@ -467,7 +467,9 @@ API keys set. Add overrides to `.env`.
 | `VERIFIER_PROVIDERS` | *(none)* | Same, for the verifier |
 | `LLM_ALLOW_FALLBACKS` | `1` | `0` = only ever use the pinned host above (use for evaluation runs) |
 | `MAX_RAG_RETRIES` | `3` | Generate→verify attempts before the fixed refusal |
-| `RAG_PROMPT_VERSION` | `2` | Generation prompt: `2` = concise (1–3 sentences, ~60 words, cited); `1` = the original prompt used for the evaluation in `rag_eval/results_v2`. Recorded in every evaluation `summary.json` |
+| `RAG_PROMPT_VERSION` | `3` | Generation prompt: `3` = concise but complete, combines all relevant excerpts (~80 words, cited; v1.3); `2` = concise (~60 words; v1.2); `1` = the original prompt used for the evaluation in `rag_eval/results_v2`. Recorded in every evaluation `summary.json` |
+| `DENSE_FLOOR_K` | `4` | Dense-search floor (v1.3): after the reranker's cut, the top-k dense hits are added back so the generator sees at least what a standard RAG would. `0` = off (v1.0–v1.2) |
+| `EVIDENCE_MAX_DOCS` | `6` | Most excerpts the generator gets once the dense floor is added (the reranker's own picks are never removed) |
 | `LLM_DISABLE_THINKING` | `1` | Keep at `1` — reasoning tokens are billed as output and can multiply cost |
 | `LLM_BASE_URL` | `https://openrouter.ai/api/v1` | Change only for a non-OpenRouter endpoint |
 | `LLM_TIMEOUT` | `90` | Seconds per HTTP request |
@@ -538,7 +540,9 @@ API keys set. Add overrides to `.env`.
 
 ## 10. Design decisions worth knowing before you change something
 
-- **Concise generation prompt (version 2, the default).** The original prompt
+- **Versions.** The running version is in `app/version.py` (shown on the demo page and recorded in every evaluation `summary.json`); `VERSIONS.md` lists what each version changed and the `.env` settings that reproduce an older one.
+- **Dense-search floor (v1.3).** The reranker keeps only 1–3 excerpts and could drop a chunk dense search ranked highly. The top 4 dense hits are now added back after the cut (up to 6 excerpts), so Sagot AI's evidence always includes what a standard dense-only RAG sees, plus the BM25, issuance-match and reranker results. The verifier checks the answer against all of it. `DENSE_FLOOR_K=0` turns it off.
+- **Concise generation prompt (version 2; version 3 is the default).** The original prompt
   asked for a restated first sentence plus two or three supporting bullets
   (median 88 words in the query logs). Version 2 follows the standard RAG
   prompt's direct style (1–3 sentences, about 60 words) and keeps everything
