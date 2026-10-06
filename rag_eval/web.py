@@ -38,6 +38,11 @@ from . import dataset, judge, ragas_metrics, run_evaluation, service
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = PROJECT_ROOT / "static"
 WEB_RUNS_DIR = run_evaluation.RESULTS_DIR / "web_runs"
+# The results folder the "Thesis results" tab reads (default rag_eval/results).
+# Set EVAL_THESIS_DIR=rag_eval/results_v2 in .env to show that run instead.
+THESIS_DIR = Path(os.environ.get("EVAL_THESIS_DIR") or run_evaluation.RESULTS_DIR)
+if not THESIS_DIR.is_absolute():
+    THESIS_DIR = PROJECT_ROOT / THESIS_DIR
 MAX_BATCH_ROWS = int(os.environ.get("EVAL_MAX_BATCH_ROWS", "200"))
 MAX_UPLOAD_CHARS = 5_000_000
 _JOB_ID_RE = re.compile(r"[0-9a-f]{8,32}")
@@ -408,7 +413,7 @@ def list_runs():
 
 def _thesis_units():
     rows = dataset.load()
-    done = run_evaluation._load_checkpoint()
+    done = run_evaluation._load_checkpoint(THESIS_DIR / "checkpoint.jsonl")
     return rows, done
 
 

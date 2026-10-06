@@ -138,11 +138,13 @@ def _stored_sagot(previous: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]
     return None
 
 
-def _load_checkpoint() -> Dict[Tuple[str, str], Dict[str, Any]]:
+def _load_checkpoint(path: Optional[Path] = None) -> Dict[Tuple[str, str], Dict[str, Any]]:
+    """Every scored (qid, side) unit in a checkpoint file (default: this run's)."""
+    path = path or CHECKPOINT_PATH
     done: Dict[Tuple[str, str], Dict[str, Any]] = {}
-    if not CHECKPOINT_PATH.exists():
+    if not path.exists():
         return done
-    with open(CHECKPOINT_PATH, encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:

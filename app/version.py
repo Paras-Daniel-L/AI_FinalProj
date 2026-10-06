@@ -16,18 +16,21 @@ Version history (see VERSIONS.md for details):
     v1.4  demo compares Sagot AI with the LLM alone (C0) and REVIE (C2);
             standard RAG (C1) removed from the demo. Answers same as v1.3.
     v1.5  demo compares Sagot AI with REVIE only (C0 removed too); team
-            access code so teammates can test through a public link
-            (SHARING.md, share.ps1, Dockerfile). Answers same as v1.3.
+            access code so teammates can test through the ngrok link.
+            Answers same as v1.3.
+    v1.5.1  cleanup: one README (file-by-file guide), no Docker/Cloudflare
+            files, unused app/baselines.py removed, EVAL_THESIS_DIR setting
+            for the Thesis results tab. Answers same as v1.3.
 
 The answer-generation behavior of an older version can be reproduced with
 settings in .env (the code paths are kept):
     v1.0 / v1.1   RAG_PROMPT_VERSION=1  DENSE_FLOOR_K=0
     v1.2          RAG_PROMPT_VERSION=2  DENSE_FLOOR_K=0
-    v1.3 – v1.5   RAG_PROMPT_VERSION=3  DENSE_FLOOR_K=4   (the defaults)
+    v1.3 – v1.5.1 RAG_PROMPT_VERSION=3  DENSE_FLOOR_K=4   (the defaults)
 """
 
-SYSTEM_VERSION = "1.5.0"
-SYSTEM_VERSION_LABEL = "v1.5"
+SYSTEM_VERSION = "1.5.1"
+SYSTEM_VERSION_LABEL = "v1.5.1"
 
 # The .env settings that reproduce each version's answer generation.
 REPRODUCE = {
@@ -36,6 +39,7 @@ REPRODUCE = {
     "v1.3": {"RAG_PROMPT_VERSION": "3", "DENSE_FLOOR_K": "4"},
     "v1.4": {"RAG_PROMPT_VERSION": "3", "DENSE_FLOOR_K": "4"},   # demo-only change: same answers as v1.3
     "v1.5": {"RAG_PROMPT_VERSION": "3", "DENSE_FLOOR_K": "4"},   # demo + sharing change: same answers as v1.3
+    "v1.5.1": {"RAG_PROMPT_VERSION": "3", "DENSE_FLOOR_K": "4"},  # docs/cleanup only: same answers as v1.3
 }
 
 
@@ -44,7 +48,7 @@ def effective_label() -> str:
     or "v1.5 (custom settings)" when .env overrides them into a mix."""
     from . import prompts, retrieval
     current = {"RAG_PROMPT_VERSION": prompts.RAG_PROMPT_VERSION, "DENSE_FLOOR_K": str(retrieval.DENSE_FLOOR_K)}
-    # Newest first: v1.4 and v1.5 answer exactly like v1.3, so the current version wins the tie.
+    # Newest first: v1.4, v1.5 and v1.5.1 answer exactly like v1.3, so the current version wins the tie.
     for label, settings in reversed(list(REPRODUCE.items())):
         if settings == current:
             return label

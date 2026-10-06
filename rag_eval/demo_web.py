@@ -17,7 +17,7 @@ git tag v1.3 (app/baselines.py) if the ablation is ever needed again.
 This page does not change the thesis evaluation tool (/eval) or the chatbot.
 Its run endpoint lives under /eval/api/run/ on purpose: app/guard.py locks
 that prefix to the host computer or to teammates who enter the team access
-code (TEAM_ACCESS_CODE, see SHARING.md), because every run makes paid model
+code (TEAM_ACCESS_CODE, see README.md), because every run makes paid model
 calls (generator, verifier, judge, Jina). Each visitor runs one question at a
 time, at most DEMO_MAX_CONCURRENT at once overall.
 

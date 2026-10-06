@@ -229,7 +229,7 @@ def test_demo_page_and_config_are_served(client):
     cfg = client.get("/demo/api/config").json()
     assert set(cfg["systems"]) == {"sagot", "revie"}                     # v1.5: Sagot AI vs REVIE only
     assert cfg["compare_modes"] == {"none": ["sagot"], "revie": ["sagot", "revie"]}
-    assert cfg["version"] == "v1.5"
+    assert cfg["version"] == "v1.5.1"
     for gone in ("c0", "c1", "c2", "all"):                               # removed comparison modes
         assert client.post("/eval/api/run/demo", json={"query": "q?", "compare": gone}).status_code == 422
     assert set(cfg["metrics"]) == {"groundedness", "context_relevance", "answer_relevance"}
@@ -288,3 +288,14 @@ def test_team_code_never_opens_admin_routes(client, monkeypatch):
     monkeypatch.setattr(guard, "TEAM_ACCESS_CODE", "kalabaw-2026")
     r = client.delete("/reset", headers={**PUBLIC, "x-team-code": "kalabaw-2026"})
     assert r.status_code == 403
+
+# ── Thesis results folder (v1.5.1) ─────────────────────────────────────────
+
+def test_thesis_tab_reads_the_folder_set_by_eval_thesis_dir(tmp_path, monkeypatch):
+    import json as _json
+    from rag_eval import web
+    monkeypatch.setattr(web, "THESIS_DIR", tmp_path)
+    assert web._thesis_units()[1] == {}                          # empty folder: nothing scored yet
+    (tmp_path / "checkpoint.jsonl").write_text(_json.dumps({"qid": "A01", "side": "sagot", "row": {}}) + "\n",
+                                               encoding="utf-8")
+    assert ("A01", "sagot") in web._thesis_units()[1]

@@ -1,7 +1,7 @@
 """
 Public-sharing guard (rate limit, daily cap, admin lock).
 
-Needed once the app is exposed through a tunnel (ngrok / Cloudflare Tunnel):
+Needed once the app is exposed through a tunnel (this project uses ngrok):
 
 1. /upload and /reset are ADMIN routes. Anyone with the public link could
    otherwise wipe the vector store or add files. They only work when the
@@ -43,8 +43,8 @@ Needed once the app is exposed through a tunnel (ngrok / Cloudflare Tunnel):
 Visitor IP: the tunnel appends the address it actually saw to the END of
 X-Forwarded-For. Anything before it was written by the visitor and can be
 faked, so the LAST entry is used. CF-Connecting-IP is only trusted when
-TRUST_CF_CONNECTING_IP=1 (i.e. you really run behind Cloudflare) — through
-ngrok a visitor could send that header themselves.
+TRUST_CF_CONNECTING_IP=1. Keep it at 0 with ngrok: through ngrok a visitor
+could send that header themselves and dodge the per-visitor limit.
 
 Env vars (all optional):
     RATE_LIMIT_PER_MIN      queries per IP per minute           (default 6)
@@ -53,7 +53,7 @@ Env vars (all optional):
     EVAL_LOCAL_ONLY         1 = lock /eval/api/run... to this computer (default 1)
     TEAM_ACCESS_CODE        a code that also unlocks /eval/api/run... for teammates on
                             the public link (default: unset = host only). Use 8+ characters.
-    TRUST_CF_CONNECTING_IP  1 = use Cloudflare's CF-Connecting-IP (default 0)
+    TRUST_CF_CONNECTING_IP  leave at 0 with ngrok (1 only behind a Cloudflare proxy)
 State is in memory: it resets when the server restarts.
 
 Budget note: the worst case is about 1.1 US cents per question (3 attempts,
