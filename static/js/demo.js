@@ -85,6 +85,7 @@ const OUTCOME_TEXT = {
   rejected_input: ['Input rejected', 'warn'], answered: ['Answered', 'neutral'],
 };
 
+const CLIP_PX = 240;  // long answers fold at this height (keep in sync with .answer-clip.clipped in demo.css)
 const state = { config: null, compare: 'none', running: false, computation: null };
 const $ = (id) => document.getElementById(id);
 
@@ -114,6 +115,16 @@ function hitsList(hits, fmt) {
   return `<ul class="hits">${hits.map((h) => `<li><span class="lbl" title="${esc(h.preview || '')}">${esc(h.label)}</span>${
     h.score != null ? `<span class="val">${esc(fmt ? fmt(h.score) : h.score)}</span>` : ''}</li>`).join('')}</ul>`;
 }
+// One source line: the citation text, with a trailing "(https://...)" turned
+// into a short "open" link instead of a long raw URL.
+function sourceItem(src) {
+  const text = String(src || '').replace(/^\[\d+\]\s*/, '');
+  const m = text.match(/\s*\((https?:\/\/[^\s)]+)\)\s*$/);
+  const label = m ? text.slice(0, m.index) : text;
+  const link = m ? ` <a class="src-link" href="${esc(m[1])}" target="_blank" rel="noopener noreferrer">open ↗</a>` : '';
+  return `<li>${esc(label)}${link}</li>`;
+}
+
 function textBox(summary, text) {
   return `<details class="draft"><summary>${esc(summary)}</summary><div class="box">${esc(text)}</div></details>`;
 }
@@ -280,7 +291,10 @@ function renderChips() {
   if ($('ref-input').value.trim()) {
     chips.push(`<span class="mchip">Reference answer added<button type="button" data-clear="ref" title="Remove the reference answer">×</button></span>`);
   }
-  if (state.computation) chips.push('<span class="mchip info">Tax computation in progress</span>');
+  // Only while the calculator is waiting for more input (a finished computation is not "in progress").
+  if (state.computation && state.computation.status === 'collecting') {
+    chips.push('<span class="mchip info">Tax computation: waiting for your answer</span>');
+  }
   $('mode-chips').innerHTML = chips.join('');
   $('mode-chips').querySelectorAll('button[data-clear]').forEach((b) => {
     b.onclick = () => {
@@ -360,28 +374,40 @@ function makeSystemCard(sys, info) {
   card.style.setProperty('--sys', SYS_COLOR[sys]);
   const pipe = PIPES[sys].map(([id, label, ic], i) =>
     `${i ? '<span class="arrow">›</span>' : ''}<span class="stage" data-stage="${id}">${icon(ic)}<span class="slabel">${esc(label)}</span></span>`).join('');
-  // Answer first, then the three scores. The process (architecture strip +
-  // step log) is recorded live but stays hidden until someone clicks
-  // "Show the process"; while running, one short line says what is happening.
+  // Progressive disclosure: only the answer is shown. Sources, the three
+  // scores and the process each sit behind one small button underneath and
+  // open only when clicked. While the system works, one plain line says what
+  // it is doing.
   card.innerHTML = `
     <div class="sys-head"><span class="sys-dot"></span><span class="sys-name">${esc(info.name)}</span>
-      <span class="sys-tag">${esc(info.tag)}</span><span class="sys-status"><span class="spinner"></span><span class="st">starting…</span></span></div>
+      <span class="sys-tag">${esc(info.tag)}</span><span class="sys-status"><span class="spinner"></span><span class="st"></span></span></div>
     <div class="live-line"><span class="spinner"></span><span class="live-text">Starting…</span></div>
-    <div class="answer"><div class="answer-label">Answer <span class="opill"></span></div>
-      <div class="answer-body"><span class="answer-wait">Waiting for the answer…</span></div><div class="sources"></div></div>
-    <div class="metrics">${METRIC_ORDER.map((m) => metricTile(m, null, 'wait')).join('')}</div>
-    <button type="button" class="how-toggle" aria-expanded="false">${icon('account_tree')}<span class="how-label">Show the process</span>
-      <span class="muted small pcount"></span>${icon('expand_more').replace('outlined', 'outlined chev')}</button>
-    <div class="how" hidden>
-      <div class="pipe">${pipe}</div>
-      <div class="proc"><ol class="steps"></ol></div>
-    </div>`;
-  const toggle = card.querySelector('.how-toggle');
-  toggle.onclick = () => {
-    const how = card.querySelector('.how');
-    how.hidden = !how.hidden;
-    toggle.setAttribute('aria-expanded', String(!how.hidden));
-    card.querySelector('.how-label').textContent = how.hidden ? 'Show the process' : 'Hide the process';
+    <div class="answer" hidden>
+      <div class="opill"></div>
+      <div class="answer-clip"><div class="answer-body"></div></div>
+      <button type="button" class="more" hidden aria-expanded="false">Show full answer</button>
+    </div>
+    <div class="actions" hidden>
+      <button type="button" class="act" data-panel="sources" aria-expanded="false" hidden>${icon('description')}<span>Sources</span><span class="act-meta"></span></button>
+      <button type="button" class="act" data-panel="scores" aria-expanded="false">${icon('insights')}<span>Scores</span><span class="act-meta"><span class="spinner"></span></span></button>
+      <button type="button" class="act" data-panel="how" aria-expanded="false">${icon('account_tree')}<span>How it was made</span><span class="pcount" hidden></span></button>
+    </div>
+    <div class="panel" data-panel="sources" hidden><ol class="src-list"></ol></div>
+    <div class="panel" data-panel="scores" hidden><div class="metrics">${METRIC_ORDER.map((m) => metricTile(m, null, 'wait')).join('')}</div></div>
+    <div class="panel" data-panel="how" hidden><div class="pipe">${pipe}</div><div class="proc"><ol class="steps"></ol></div></div>`;
+  card.querySelectorAll('.act').forEach((btn) => {
+    btn.onclick = () => {
+      const panel = card.querySelector(`.panel[data-panel="${btn.dataset.panel}"]`);
+      panel.hidden = !panel.hidden;
+      btn.setAttribute('aria-expanded', String(!panel.hidden));
+    };
+  });
+  const more = card.querySelector('.more');
+  more.onclick = () => {
+    const clip = card.querySelector('.answer-clip');
+    const open = clip.classList.toggle('open');
+    more.setAttribute('aria-expanded', String(open));
+    more.textContent = open ? 'Show less' : 'Show full answer';
   };
   return card;
 }
@@ -421,7 +447,7 @@ class Turn {
     this.steps = {};
     this.metrics = {};
     this.started = Date.now();
-    this.root = el('div', 'turn');
+    this.root = el('div', this.mode.systems.length === 1 ? 'turn single' : 'turn');
     this.root.appendChild(el('div', 'user-q', esc(query)));
     const chips = `${compare !== 'none' ? pill(this.mode.label, 'info') : ''}${hasRef ? pill('Reference answer given', 'good') : ''}`;
     if (chips) this.root.appendChild(el('div', 'user-meta', chips));
@@ -443,7 +469,7 @@ class Turn {
 
   tick() {
     Object.values(this.cards).forEach((c) => {
-      if (!c.done) c.el.querySelector('.st').textContent = `running · ${Math.round((Date.now() - c.t0) / 1000)}s`;
+      if (!c.done) c.el.querySelector('.st').textContent = `${Math.round((Date.now() - c.t0) / 1000)}s`;
     });
   }
 
@@ -505,7 +531,7 @@ class Turn {
     li.innerHTML = html;
     const list = card.el.querySelector('.steps');
     list.scrollTop = list.scrollHeight;
-    card.el.querySelector('.pcount').textContent = `· ${list.children.length} steps`;
+    card.el.querySelector('.pcount').textContent = list.children.length;
     const live = card.el.querySelector('.live-text');
     if (live && !card.done) live.textContent = `${liveText(sys, ev)}…`;
   }
@@ -513,12 +539,33 @@ class Turn {
   onAnswer(ev) {
     const card = this.cards[ev.system];
     if (!card) return;
-    const [text, kind] = OUTCOME_TEXT[ev.outcome] || [ev.outcome, 'neutral'];
+    // Baselines just "answer"; say what that means for each (the key contrast with Sagot AI's "Verified").
+    const [text, kind] = ev.outcome === 'answered'
+      ? (ev.system === 'c2' ? ['From REVIE', 'neutral'] : ['Not fact-checked', 'warn'])
+      : OUTCOME_TEXT[ev.outcome] || [ev.outcome, 'neutral'];
     card.el.querySelector('.opill').innerHTML = pill(text, kind);
     card.el.querySelector('.answer-body').innerHTML = md(ev.answer || '');
-    card.el.querySelector('.sources').innerHTML = (ev.sources || []).map((s) => `<span>${esc(s)}</span>`).join('');
-    card.el.querySelector('.st').textContent = `answered in ${ev.answer_elapsed_s}s · scoring…`;
-    card.el.querySelector('.live-text').textContent = 'Scoring the answer…';
+    card.el.querySelector('.answer').hidden = false;
+    card.el.querySelector('.actions').hidden = false;
+    card.el.querySelector('.live-line').hidden = true;
+    const sources = ev.sources || [];
+    if (sources.length) {
+      const btn = card.el.querySelector('.act[data-panel="sources"]');
+      btn.hidden = false;
+      btn.querySelector('.act-meta').textContent = sources.length;
+      card.el.querySelector('.src-list').innerHTML = sources.map(sourceItem).join('');
+    }
+    // Long answers (a full tax computation) are clipped with a fade and a
+    // "Show full answer" button, so one answer never fills the whole screen.
+    // Measured against the fold height itself (CLIP_PX, same as the CSS
+    // max-height), with some slack so a slightly-too-long answer is just shown.
+    requestAnimationFrame(() => {
+      const body = card.el.querySelector('.answer-body');
+      if (body.scrollHeight > CLIP_PX + 80) {
+        card.el.querySelector('.answer-clip').classList.add('clipped');
+        card.el.querySelector('.more').hidden = false;
+      }
+    });
     if (ev.system === 'sagot') {
       state.computation = ev.computation || null;
       updateNote();
@@ -531,12 +578,17 @@ class Turn {
     const tile = card.el.querySelector(`.mtile[data-metric="${ev.metric}"]`);
     if (ev.status === 'done') this.metrics[ev.system][ev.metric] = ev.result;
     if (tile) tile.outerHTML = metricTile(ev.metric, ev.result, ev.status === 'running' ? 'running' : 'done');
+    if (Object.keys(this.metrics[ev.system] || {}).length === METRIC_ORDER.length) {
+      card.el.querySelector('.act[data-panel="scores"] .act-meta').innerHTML = '';
+    }
   }
 
   onMetricsSkipped(ev) {
     const card = this.cards[ev.system];
     if (!card) return;
-    card.el.querySelector('.metrics').outerHTML = `<div class="metrics-note">${icon('info')} ${esc(ev.reason)}</div>`;
+    // Nothing to score (a greeting, a follow-up question): no Scores button at all.
+    card.el.querySelector('.act[data-panel="scores"]').remove();
+    card.el.querySelector('.panel[data-panel="scores"]').remove();
     this.metrics[ev.system] = null;
   }
 
@@ -547,6 +599,9 @@ class Turn {
     }
     const card = this.cards[ev.system];
     card.el.querySelector('.answer-body').innerHTML = `<div class="turn-error">${icon('error')} ${esc(ev.message)}</div>`;
+    card.el.querySelector('.answer').hidden = false;
+    card.el.querySelector('.actions').hidden = false;   // the process stays inspectable
+    card.el.querySelector('.live-line').hidden = true;
     card.el.querySelectorAll('.stage.running').forEach((s) => { s.classList.remove('running'); s.classList.add('failed'); });
   }
 
@@ -555,37 +610,53 @@ class Turn {
     if (!card) return;
     card.done = true;
     card.el.querySelector('.live-line').hidden = true;
-    card.el.querySelector('.sys-status').innerHTML = `${icon('done_all')}<span class="st">done in ${ev.elapsed_s}s</span>`;
+    card.el.querySelector('.sys-status').innerHTML = `<span class="st">${ev.elapsed_s}s</span>`;
     card.el.querySelectorAll('.mtile.wait').forEach((t) => {
       t.outerHTML = metricTile(t.dataset.metric, { score: null, note: 'Not computed.' }, 'done');
     });
+    const meta = card.el.querySelector('.act[data-panel="scores"] .act-meta');
+    if (meta) meta.innerHTML = '';
   }
 
   finish() {
     clearInterval(this.timer);
     Object.keys(this.cards).forEach((s) => { if (!this.cards[s].done) this.onSystemDone({ system: s, elapsed_s: '—' }); });
-    if (this.mode.systems.length > 1) this.root.appendChild(this.scoreboard());
+    if (this.mode.systems.length > 1) {
+      // The side-by-side scores are also opt-in.
+      const wrap = el('details', 'board-wrap');
+      wrap.innerHTML = `<summary>${icon('leaderboard')}Compare the scores side by side${icon('expand_more').replace('outlined', 'outlined chev')}</summary>`;
+      wrap.appendChild(this.scoreboard());
+      this.root.appendChild(wrap);
+    }
   }
 
+  // Side-by-side scores: one small group per score, one labeled bar per
+  // system. Reads the same on a phone and a projector (no wide table).
   scoreboard() {
     const systems = this.mode.systems;
     const infos = (state.config && state.config.systems) || {};
     const defs = (state.config && state.config.metrics) || {};
-    const rows = METRIC_ORDER.map((m) => {
+    let anyStar = false;
+    const groups = METRIC_ORDER.map((m) => {
       const vals = systems.map((s) => (this.metrics[s] && this.metrics[s][m] ? this.metrics[s][m].score : null));
       const real = vals.filter((v) => v != null);
       // Star the best score only when it actually stands out (not when every system ties).
       const best = real.length > 1 && Math.max(...real) !== Math.min(...real) ? Math.max(...real) : null;
-      return `<tr><th scope="row">${esc((defs[m] || {}).name || m)}</th>${vals.map((v, i) => v == null
-        ? '<td class="cell na">N/A</td>'
-        : `<td class="cell ${best != null && v === best ? 'best' : ''}" style="--sys:${SYS_COLOR[systems[i]]}"><span class="val">${pct(v)}</span><div class="bar"><i style="width:${Math.max(2, v * 100)}%"></i></div></td>`).join('')}</tr>`;
+      const rows = systems.map((s, i) => {
+        const v = vals[i];
+        const star = best != null && v === best;
+        anyStar = anyStar || star;
+        const info = infos[s] || {};
+        return `<div class="brow" style="--sys:${SYS_COLOR[s]}">
+          <span class="bsys"><span class="sys-dot"></span>${esc(info.name || s)}${s === 'sagot' ? '' : `<span class="btag">${esc(info.tag || '')}</span>`}</span>
+          <div class="bar"><i style="width:${v == null ? 0 : Math.max(2, v * 100)}%"></i></div>
+          <span class="bval ${v == null ? 'na' : ''}">${v == null ? 'N/A' : pct(v)}${star ? ' <span class="star" title="Highest">★</span>' : ''}</span>
+        </div>`;
+      }).join('');
+      return `<div class="bgroup"><div class="bmetric">${esc((defs[m] || {}).name || m)}</div>${rows}</div>`;
     }).join('');
-    const board = el('div', 'board', `<h3>Side by side</h3><div style="overflow-x:auto"><table>
-      <thead><tr><th>Score</th>${systems.map((s) => `<th><span class="sysh"><span class="sys-dot" style="--sys:${SYS_COLOR[s]}"></span>${
-        esc((infos[s] || {}).name || s)} <span class="muted">${esc((infos[s] || {}).tag || '')}</span></span></th>`).join('')}</tr></thead>
-      <tbody>${rows}</tbody></table></div>
-      <p class="muted small" style="margin:8px 0 0">${rows.includes('class="cell best"') ? '★ = highest score for that row. ' : ''}N/A means the score does not apply to that system (for example, no retrieved documents to check against) — it is not a zero.</p>`);
-    return board;
+    return el('div', 'board', `${groups}
+      <p class="muted small board-note">${anyStar ? '★ = highest score. ' : ''}N/A means the score does not apply to that system (for example, no retrieved documents to check against). It is not a zero.</p>`);
   }
 
   handle(ev) {
@@ -695,6 +766,11 @@ document.addEventListener('DOMContentLoaded', () => {
   evalLinkVisibility();
   $('btn-guide').onclick = () => setGuide($('guide').hidden);
   $('btn-options').onclick = () => setOptions($('options-panel').hidden);
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!$('options-panel').hidden) setOptions(false);
+    else if (!$('guide').hidden) setGuide(false);
+  });
   $('btn-guide-close').onclick = () => setGuide(false);
   $('btn-clear').onclick = clearAll;
   $('ref-input').addEventListener('input', () => { syncDots(); renderChips(); });
