@@ -24,6 +24,7 @@ from langchain_chroma import Chroma
 
 from . import cache as answer_cache
 from . import intent as intent_router
+from . import progress
 from . import recovery
 from . import trace as trace_log
 from .classifier import NO_SOURCES_LABEL, get_year_filter, label_from_docs
@@ -348,6 +349,8 @@ def _run_query(body: QueryRequest, tr: Dict[str, Any], started: float) -> Tuple[
         )
         tr.setdefault("cost", None)
         trace_log.write(tr)
+        progress.emit("final", outcome=outcome, mode=response.mode, attempts=attempts,
+                      classification=response.classification, n_sources=len(response.sources or []))
         return response, tr
 
     # Step 0a: Sanitize (app/sanitize.py). Cleans the text (invisible and
@@ -363,6 +366,8 @@ def _run_query(body: QueryRequest, tr: Dict[str, Any], started: float) -> Tuple[
     tr.update(query=query, history_turns=len(history))
     if query == body.query:
         tr.pop("query_raw")  # only keep the raw text when cleaning changed it
+    progress.emit("sanitize", "done" if checked.ok else "failed", query=query,
+                  changed=query != body.query, reason=None if checked.ok else checked.reason)
 
     # Step 0b: Detect the user's language once, from the cleaned query,
     # before anything else runs. This value — not a re-derivation from a
@@ -370,6 +375,8 @@ def _run_query(body: QueryRequest, tr: Dict[str, Any], started: float) -> Tuple[
     # into generation. See app/language.py.
     lang = detect_language(query)
     tr.update(language=lang.label, language_hits={"filipino": lang.filipino_hits, "english": lang.english_hits})
+    progress.emit("language", label=lang.label, display_name=lang.display_name,
+                  filipino_hits=lang.filipino_hits, english_hits=lang.english_hits)
 
     # A computation reply can be very short ("8%") and still be valid input.
     short_computation_reply = (
@@ -397,6 +404,7 @@ def _run_query(body: QueryRequest, tr: Dict[str, Any], started: float) -> Tuple[
             ctx["open_state"] = state
 
     if is_greeting(query):
+        progress.emit("route", target="greeting")
         return finish(_greeting_response(lang), "greeting")
 
     # Step 1b: Intent (app/intent.py). CHAT and TAX_COMPUTATION leave the RAG
@@ -405,8 +413,10 @@ def _run_query(body: QueryRequest, tr: Dict[str, Any], started: float) -> Tuple[
     intent = intent_router.classify(query)
     ctx["intent"] = intent
     tr["intent"] = intent.to_dict()
+    progress.emit("intent", label=intent.label, topic=intent.topic, vague=intent.vague)
 
     if intent.label == intent_router.CHAT:
+        progress.emit("route", target="chat")
         return finish(_chat_response(lang), "chat")
 
     if _wants_computation(query, intent, state):
@@ -417,6 +427,9 @@ def _run_query(body: QueryRequest, tr: Dict[str, Any], started: float) -> Tuple[
         turn = computation.handle(query, lang.label, state, kb_lookup=_kb_lookup)
         tr["computation"] = {"outcome": turn.outcome, "state_out": turn.state.model_dump() if turn.state else None,
                              "result": turn.result}
+        progress.emit("route", target="computation")
+        progress.emit("computation", outcome=turn.outcome, result=turn.result,
+                      awaiting=list(turn.state.awaiting) if turn.state else [])
         return finish(QueryResponse(
             answer=turn.answer,
             sources=turn.sources,
@@ -429,13 +442,16 @@ def _run_query(body: QueryRequest, tr: Dict[str, Any], started: float) -> Tuple[
     # Step 1c: Too short to retrieve on ("tax?", "VAT", "deadline?"): ask a
     # clarifying question instead of retrieving on one word.
     if intent.vague:
+        progress.emit("route", target="clarify")
         return finish(_clarify_response(lang, intent), "clarification")
+    progress.emit("route", target="rag")
 
     # Step 2: Route (year filter from an explicit year/citation in the
     # query, or None for whole-corpus search). Rule-based; the
     # classification LABEL is derived later, from what retrieval found.
     year_filter = get_year_filter(query)
     tr["year_filter"] = year_filter
+    progress.emit("year_filter", year=year_filter)
 
     # Step 3: Knowledge query -> try RAG. An empty/unreachable DB means
     # there is no evidence to ground an answer in, so this returns a
@@ -449,8 +465,10 @@ def _run_query(body: QueryRequest, tr: Dict[str, Any], started: float) -> Tuple[
         tr["index_error"] = f"{type(e).__name__}: {e}"
 
     if db_empty or db is None:
+        progress.emit("index", "failed", chunks=0, error=tr.get("index_error"))
         return finish(_no_answer_response(lang, recovery.REASON_NO_INDEX, intent), "no_index")
     tr["index_chunks"] = len(chunk_ids)
+    progress.emit("index", chunks=len(chunk_ids))
 
     _warn_if_stale_index()
 
@@ -486,6 +504,7 @@ def _run_query(body: QueryRequest, tr: Dict[str, Any], started: float) -> Tuple[
             ), "cache_hit")
         print("💾 [Cache] miss — running the full pipeline")
         tr["cache"] = "miss"
+    progress.emit("cache", state=tr.get("cache"))
 
     # Step 4: Retrieve documents (RRF-fused, then coarse-relevance
     # filtered — see retrieve_docs()/filter_by_relevance() in
@@ -495,6 +514,9 @@ def _run_query(body: QueryRequest, tr: Dict[str, Any], started: float) -> Tuple[
     combined = retrieve_docs(query, year_filter, db)
     tr["retrieval_ms"] = int((time.monotonic() - t_retrieval) * 1000)
     tr["retrieved"] = _retrieval_trace(combined)
+    progress.emit("evidence", "done" if combined else "failed", ms=tr["retrieval_ms"], excerpts=[
+        {"label": r["label"], "rerank_score": r["rerank_score"], "retrievers": r["retrievers"],
+         "text": r["text"]} for r in tr["retrieved"]])
 
     if not combined:
         return finish(_no_answer_response(lang, recovery.REASON_NO_EVIDENCE, intent), "no_retrieval")

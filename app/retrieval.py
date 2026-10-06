@@ -35,6 +35,7 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from rank_bm25 import BM25Okapi
 
+from . import progress
 from . import rerank as reranker
 from .language import AMBIGUOUS_FILIPINO_MARKERS, ENGLISH_MARKERS, FILIPINO_MARKERS
 from .schemas import ConvMessage
@@ -191,6 +192,19 @@ def format_context(docs: List[Document]) -> str:
 def source_labels(docs: List[Document]) -> List[str]:
     """Labels for the response's `sources`, numbered like format_context()."""
     return [source_label(doc, i) for i, doc in enumerate(docs, start=1)]
+
+
+def _demo_hits(docs: List[Document], score_key: Optional[str] = None, limit: int = 8) -> List[Dict[str, object]]:
+    """A short list of retrieved chunks for the demo's process view
+    (app/progress.py). Only built when a demo listener is active."""
+    out = []
+    for i, doc in enumerate(docs[:limit], start=1):
+        item: Dict[str, object] = {"label": source_label(doc, i).split("] ", 1)[-1],
+                                   "preview": progress.preview(doc.page_content, 160)}
+        if score_key and doc.metadata.get(score_key) is not None:
+            item["score"] = round(float(doc.metadata[score_key]), 4)
+        out.append(item)
+    return out
 
 
 def _canonical_id(doc: Document, retriever_label: str, rank: int) -> str:
@@ -673,6 +687,7 @@ def retrieve_candidates(
         print(f"🔖 [Issuance] query names: {', '.join(query_ids)}")
 
     semantic_results: List[Document] = []
+    progress.emit("semantic", "running", k=semantic_top_k)
     try:
         semantic_results = _semantic_search(db, query, semantic_top_k, year_filter)
         if semantic_results:
@@ -681,6 +696,9 @@ def retrieve_candidates(
     except Exception as e:
         print(f"⚠️  [Retrieval] semantic search failed, continuing without it: {e}")
         semantic_results = []
+    if progress.active():
+        progress.emit("semantic", n=len(semantic_results), k=semantic_top_k, year=year_filter,
+                      hits=_demo_hits(semantic_results, "_semantic_distance"))
 
     bm25_results: List[Document] = []
     try:
@@ -688,6 +706,9 @@ def retrieve_candidates(
     except Exception as e:
         print(f"⚠️  [Retrieval] BM25 search failed, continuing without it: {e}")
         bm25_results = []
+    if progress.active():
+        progress.emit("bm25", n=len(bm25_results), k=bm25_top_k, year=year_filter,
+                      hits=_demo_hits(bm25_results, "_bm25_score"))
 
     id_results: List[Document] = []
     if query_ids:
@@ -696,6 +717,8 @@ def retrieve_candidates(
             print(f"🔖 [Issuance] {len(id_results)} chunk(s) from the named issuance(s)")
         except Exception as e:
             print(f"⚠️  [Retrieval] issuance-id search failed, continuing without it: {e}")
+        if progress.active():
+            progress.emit("issuance_id", ids=query_ids, n=len(id_results), hits=_demo_hits(id_results))
 
     if not semantic_results and not bm25_results and not id_results:
         print("🔀 [RRF] all retrievers returned 0 results — nothing to fuse")
@@ -705,7 +728,12 @@ def retrieve_candidates(
     if id_results:
         lists.append(id_results)
         labels.append("issuance_id")
-    return reciprocal_rank_fusion(lists, k=rrf_k, top_k=final_top_k, source_labels=labels)
+    fused = reciprocal_rank_fusion(lists, k=rrf_k, top_k=final_top_k, source_labels=labels)
+    if progress.active():
+        progress.emit("fusion", n=len(fused), rrf_k=rrf_k, retrievers=labels,
+                      both=sum(1 for d in fused if (d.metadata.get("_retriever_count") or 0) >= 2),
+                      hits=_demo_hits(fused, "_rrf_score"))
+    return fused
 
 
 def retrieve_docs(
@@ -747,12 +775,19 @@ def retrieve_docs(
     use_reranker = RERANK_ON
 
     if use_reranker and fused:
+        n_candidates = len(fused)
+        progress.emit("rerank", "running", n_candidates=n_candidates)
         try:
             fused = rerank_and_cut(query, fused, query_ids)
         except reranker.RerankError as e:
             print(f"⚠️  [Rerank] failed, falling back to RRF top {FALLBACK_TOP_K}: {e}")
             fused = fused[:FALLBACK_TOP_K]
+            progress.emit("rerank", "failed", error=str(e), fallback_top_k=FALLBACK_TOP_K)
         else:
+            if progress.active():
+                progress.emit("rerank", n_candidates=n_candidates, kept=len(fused),
+                              min_score=RERANK_MIN_SCORE, relative=RERANK_RELATIVE, max_docs=RERANK_MAX_DOCS,
+                              hits=_demo_hits(fused, "_rerank_score"))
             if EVIDENCE_COMPRESSION and fused:
                 fused = compress_evidence(query, fused)
 

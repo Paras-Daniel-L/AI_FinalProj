@@ -6,6 +6,7 @@ Run from the project root with:
 
 Then open http://localhost:8000          (the chatbot)
       and http://localhost:8000/eval     (the evaluation tool)
+      and http://localhost:8000/demo     (the live demo for the panel)
 
 (This file must stay at the project root — it's what turns `app/` from
 a loose folder of scripts into something runnable with a single command.)
@@ -20,6 +21,10 @@ from app.api import app
 try:
     from rag_eval.web import router as eval_router
     app.include_router(eval_router)
+    # The live demo page (/demo): chat + live process view + three metrics,
+    # with the C0/C1/C2 comparisons (rag_eval/demo_web.py, app/baselines.py).
+    from rag_eval.demo_web import router as demo_router
+    app.include_router(demo_router)
 except ImportError as e:
     print(f"⚠️  [Eval] evaluation tool not loaded ({e}). "
           "Install it with: pip install -r rag_eval/requirements.txt")

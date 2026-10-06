@@ -635,3 +635,38 @@ Results: `rag_eval/results/summary.json`, `scores_flat.csv`, `raw_scores.json`. 
 | `JUDGE_ANSWER_QUESTIONS` | `3` | Questions generated per answer for Answer Relevance |
 | `EVAL_LOCAL_ONLY` | `1` | Lock the run buttons to the host computer |
 | `EVAL_MAX_BATCH_ROWS` | `200` | Largest package accepted |
+
+## 13. The live demo page (for the panel)
+
+A third page, served by the same server, for showing the system live: <http://localhost:8000/demo>, or the **Live demo** button in the chatbot's header. It is kept calm for the panel: it opens as a plain chat with **Sagot AI only**; the guide (**Guide**), the comparison and reference-answer settings (**Options** next to the question box) and each answer's process (**Show the process**) stay hidden until clicked. While a system works, one plain-language line says what it is doing. Every answer shows:
+
+1. **The process, live.** An architecture strip (Input check → Language trigger → Intent & routing → Hybrid retrieval → RRF fusion → Reranker → Generator ⇄ Verifier → Answer) lights up as each stage runs, and a step-by-step log underneath shows what happened: the chunks each search found, what the reranker kept, every draft, every verifier verdict and retry, and the final outcome. Stages a turn doesn't use (a computation, a greeting) are shown struck through.
+2. **Three scores** from the independent judge model (`JUDGE_MODEL`), each with its formula one click away:
+
+| Shown as | How it is computed on this page |
+|---|---|
+| Groundedness | claims supported by the retrieved documents ÷ all claims in the answer (same as the evaluation) |
+| Context Relevance | average cosine similarity between the user's question and 3 questions generated from the answer (the evaluation's Answer Relevance formula) |
+| Answer Relevance | facts in the operator's reference answer stated correctly ÷ all facts in the reference answer (the evaluation's Answer Correctness formula); N/A when no reference answer is typed |
+
+**Compare with** runs the same question through baselines that use the same model (`GENERATOR_MODEL`), so differences come from the framework:
+
+| Option | Systems | What it shows |
+|---|---|---|
+| Sagot AI only | Sagot AI | The full framework |
+| vs C0 | + C0: the generator alone, no retrieval, no verifier | How much the raw LLM hallucinates on BIR questions |
+| vs C1 | + C1: standard RAG — dense search only (top `C1_TOP_K`, default 4), LangChain's standard QA prompt, no BM25/reranker, no language trigger, no verifier | The effect of retrieval by itself |
+| vs C2 | + C2: REVIE. Paste REVIE's answer into the **REVIE's answer** box first | The existing BIR chatbot |
+| vs All | all four, side by side, with a scoreboard at the end | |
+
+"N/A" means a score does not apply (C0 and REVIE retrieve no visible documents, so they have no Groundedness), never zero.
+
+Files: `static/demo.html`, `static/js/demo.js`, `static/css/demo.css`, `rag_eval/demo_web.py` (page + streaming run endpoint `/eval/api/run/demo`), `rag_eval/demo_metrics.py` (the three scores), `app/baselines.py` (C0, C1), `app/progress.py` (the live step events; a no-op for the normal chatbot and the evaluation). Tests: `tests/test_demo.py`.
+
+**Evaluation button hidden for the defense.** The **Evaluation** button is hidden on the chatbot and the demo so the panel isn't drawn to it; `/eval` itself works as before. To bring the button back, open <http://localhost:8000/?eval=1> once (remembered in that browser); `?eval=0` hides it again.
+
+**Cost and access.** Like the evaluation tool's run buttons, the demo only runs on the host computer (`EVAL_LOCAL_ONLY=1`), one question at a time. The cache is always bypassed so every step runs live. A "vs All" question costs roughly: Sagot AI 2–6 model calls, C0 and C1 one call each, and 3 judge calls + 1 Jina embedding call per system.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `C1_TOP_K` | `4` | Chunks the C1 baseline retrieves |

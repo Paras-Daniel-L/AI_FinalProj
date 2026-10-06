@@ -143,7 +143,13 @@
       <!-- Evaluation tool (rag_eval/web.py). Opens in this same tab; its
            "Back to chatbot" button returns here. Note: the chat lives only in
            this page's memory, so an ongoing conversation is cleared. -->
-      <a href="/eval" title="Open the evaluation tool" class="inline-flex items-center gap-space-xs px-space-md py-space-xs rounded-full bg-surface-container-lowest text-primary hover:bg-surface-container-high transition-colors font-label-md text-label-md">
+      <!-- Live demo for the panel (rag_eval/demo_web.py): chat + live process + three scores + C0/C1/C2 comparison. -->
+      <a href="/demo" title="Open the live demo: see each step of the process and the scores" class="inline-flex items-center gap-space-xs px-space-md py-space-xs rounded-full bg-primary text-on-primary hover:bg-tertiary transition-colors font-label-md text-label-md">
+        <span class="material-symbols-outlined text-[16px]">play_circle</span>
+        <span>Live demo</span>
+      </a>
+      <!-- Hidden during the defense; /eval still works. Open /?eval=1 once to show this button again, /?eval=0 to hide it. -->
+      <a href="/eval" id="eval-link" style="display:none" title="Open the evaluation tool" class="inline-flex items-center gap-space-xs px-space-md py-space-xs rounded-full bg-surface-container-lowest text-primary hover:bg-surface-container-high transition-colors font-label-md text-label-md">
         <span class="material-symbols-outlined text-[16px]">analytics</span>
         <span>Evaluation</span>
       </a>
@@ -340,5 +346,16 @@
   </footer>
 
   <script src="/static/js/app.js"></script>
+  <script>
+    // Evaluation button: hidden unless this browser was told to show it (?eval=1; ?eval=0 hides it again).
+    (function () {
+      try {
+        var q = new URLSearchParams(location.search).get('eval');
+        if (q === '1') localStorage.setItem('show-eval', '1');
+        if (q === '0') localStorage.removeItem('show-eval');
+        if (localStorage.getItem('show-eval') === '1') document.getElementById('eval-link').style.display = '';
+      } catch (e) { /* storage unavailable: keep it hidden */ }
+    })();
+  </script>
 </body>
 </html>

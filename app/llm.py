@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
 
-from . import llm_client
+from . import llm_client, progress
 from .language import LanguageResult, detect_language
 from .prompts import (
     NO_ANSWER_SENTINEL,
@@ -347,12 +347,17 @@ def run_rag(
                 audit_notice=audit_notice,
                 question=query,  # always the ORIGINAL question — never mutated
             )
+            progress.emit("generate", "running", attempt=number, max_attempts=max_retries,
+                          model=GENERATOR_MODEL, language=lang.display_name,
+                          retry_reason=audit_notice.strip() or None)
             gen = _chat(
                 prompt, SYSTEM_PROMPT, GENERATION_TEMPERATURE, GENERATOR_MODEL,
                 GENERATOR_MAX_TOKENS, GENERATOR_PROVIDERS, "generator",
             )
             attempt.generator = gen.meta()
             attempt.draft = draft = gen.text
+            progress.emit("generate", attempt=number, max_attempts=max_retries, model=GENERATOR_MODEL,
+                          draft=draft, no_answer=_is_no_answer(draft), truncated=gen.truncated)
 
             if _is_no_answer(draft):
                 attempt.status = "no_answer"
@@ -373,7 +378,11 @@ def run_rag(
                 )
                 continue
 
+            progress.emit("verify", "running", attempt=number, max_attempts=max_retries, model=VERIFIER_MODEL)
             verdict, ver = _verify(context_text, draft)
+            progress.emit("verify", attempt=number, max_attempts=max_retries, model=VERIFIER_MODEL,
+                          passed=verdict.passed, verdict=verdict.kind, issues=verdict.issues,
+                          will_retry=(not verdict.passed and number < max_retries))
             attempt.verifier = ver.meta()
             attempt.verifier_raw = ver.text
             attempt.verdict, attempt.issues, attempt.critique = verdict.kind, verdict.issues, verdict.critique
@@ -395,6 +404,7 @@ def run_rag(
         except Exception as e:  # LLMError, network, anything: record, stop, fail closed
             attempt.status = "error"
             result.error = f"{type(e).__name__}: {e}"
+            progress.emit("generate", "failed", attempt=number, error=result.error)
             print(f"💥 [LLM] attempt {number}/{max_retries} failed: {result.error}")
             return done(OUTCOME_ERROR, refusal)
 

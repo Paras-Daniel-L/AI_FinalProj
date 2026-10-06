@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SagotAI · Live Demo</title>
+  <!-- Page self-check: say in plain words if something this page needs failed to load. -->
+  <script>
+    (function () {
+      var shown = {};
+      function show(msg) {
+        if (shown[msg]) return; shown[msg] = true;
+        var put = function () {
+          var box = document.getElementById('page-check');
+          if (!box) {
+            box = document.createElement('div'); box.id = 'page-check';
+            box.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:9999;background:#fef2f2;border:1px solid #fca5a5;color:#7f1d1d;border-radius:12px;padding:12px 16px;font:14px/1.45 system-ui,sans-serif';
+            document.body.appendChild(box);
+          }
+          var p = document.createElement('div'); p.textContent = '⚠ ' + msg; box.appendChild(p);
+        };
+        document.body ? put() : document.addEventListener('DOMContentLoaded', put);
+      }
+      if (location.protocol === 'file:') show('This page was opened as a file. Start the server (uvicorn main:app --host 127.0.0.1 --port 8000) and open http://localhost:8000/demo instead.');
+      window.addEventListener('error', function (e) {
+        var t = e.target;
+        if (t && t.tagName === 'SCRIPT' && t.src) show('Could not load ' + t.src + '. Check the internet connection and that the server is running, then refresh (Ctrl+F5).');
+        else if (e.message) show('Script error: ' + e.message + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : ''));
+      }, true);
+    })();
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/marked@18.0.14/lib/marked.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.16/dist/purify.min.js"></script>
+  <link rel="stylesheet" href="/static/css/demo.css"/>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/" title="Back to the chatbot">SagotAI</a>
+      <span class="chip chip-live"><span class="dot-live"></span>Live demo</span>
+      <nav class="topnav">
+        <button type="button" class="navbtn" id="btn-guide" aria-expanded="false">
+          <span class="material-symbols-outlined">help</span><span>Guide</span></button>
+        <a class="navbtn" href="/"><span class="material-symbols-outlined">chat</span><span>Chatbot</span></a>
+        <!-- Hidden during the defense. Open /demo?eval=1 (or /?eval=1) once to show it again, ?eval=0 to hide. -->
+        <a class="navbtn" href="/eval" id="eval-link" style="display:none"><span class="material-symbols-outlined">analytics</span><span>Evaluation</span></a>
+        <button type="button" class="navbtn" id="btn-clear"><span class="material-symbols-outlined">restart_alt</span><span>Clear</span></button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page">
+    <div id="banners"></div>
+
+    <!-- Guide: what the systems and the three scores mean. Hidden until "Guide" is clicked. -->
+    <section id="guide" class="guide" aria-label="How to read this page" hidden>
+      <div class="guide-head">
+        <div>
+          <h1>See how Sagot AI answers, step by step</h1>
+          <p class="muted">Type any BIR tax question below. Each answer shows the system's process as it happens, then three scores from an independent judge model. Pick a comparison to run the same question through the baselines.</p>
+        </div>
+        <button type="button" class="iconbtn" id="btn-guide-close" title="Hide the guide"><span class="material-symbols-outlined">close</span></button>
+      </div>
+      <h2 class="guide-sub">The systems</h2>
+      <div class="sys-legend" id="sys-legend"></div>
+      <h2 class="guide-sub">The three scores <span class="muted small">(0–100%, higher is better)</span></h2>
+      <div class="metric-legend" id="metric-legend"></div>
+    </section>
+
+    <!-- Conversation -->
+    <section id="thread" class="thread" aria-live="polite"></section>
+
+    <div id="empty-state" class="empty">
+      <div class="empty-title">Ask Sagot AI a BIR tax question</div>
+      <p>Each answer comes with three scores. Click <b>Show the process</b> under an answer to see how it was made.</p>
+    </div>
+  </main>
+
+  <!-- Composer -->
+  <footer class="composer">
+    <div class="composer-inner">
+      <!-- Options (comparison + reference answer): hidden until the Options button is clicked. -->
+      <div id="options-panel" class="options-panel" hidden>
+        <div class="compare-row" role="radiogroup" aria-label="Compare Sagot AI with">
+          <span class="compare-label">Compare with:</span>
+          <div class="segmented" id="compare-modes"></div>
+        </div>
+        <div class="extras">
+          <details id="ref-box">
+            <summary><span class="material-symbols-outlined">fact_check</span>Reference answer <span class="muted">(for Answer Relevance — optional)</span><span class="filled-dot" id="ref-dot" hidden></span></summary>
+            <textarea id="ref-input" rows="3" maxlength="5000" placeholder="Paste or type the correct answer to this question. Leave empty and Answer Relevance shows N/A."></textarea>
+          </details>
+          <details id="revie-box" hidden>
+            <summary><span class="material-symbols-outlined">content_paste</span>REVIE's answer <span class="muted">(required for C2)</span><span class="filled-dot" id="revie-dot" hidden></span></summary>
+            <textarea id="revie-input" rows="3" maxlength="10000" placeholder="Ask REVIE the same question on the BIR website, then paste its answer here."></textarea>
+          </details>
+        </div>
+      </div>
+      <div id="mode-chips" class="mode-chips"></div>
+
+      <form class="askbar" id="ask-form" autocomplete="off">
+        <button type="button" id="btn-options" class="optbtn" aria-expanded="false" title="Compare with other systems, add a reference answer">
+          <span class="material-symbols-outlined">tune</span><span>Options</span></button>
+        <input id="ask-input" type="text" maxlength="2000" placeholder="Magtanong ka... Ask a BIR tax question" aria-label="Your question"/>
+        <button id="ask-send" type="submit" class="sendbtn" title="Send"><span class="material-symbols-outlined">send</span></button>
+      </form>
+      <p class="composer-note" id="composer-note"></p>
+    </div>
+  </footer>
+
+  <script src="/static/js/demo.js"></script>
+</body>
+</html>
