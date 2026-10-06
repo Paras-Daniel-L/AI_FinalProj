@@ -1,9 +1,9 @@
 """
-Tests for the live demo page (/demo): the process events, the C0/C1
-baselines, the three demo metrics and the streaming run endpoint.
+Tests for the live demo page (/demo): the process events, the three demo
+metrics, the Sagot AI vs REVIE comparison (v1.5) and the streaming run endpoint.
 
 No network: Chroma, BM25, the reranker, every model call (generator,
-verifier, baselines, judge) and the Jina matching embeddings are replaced
+verifier, judge) and the Jina matching embeddings are replaced
 with fakes. The REAL pipeline code (app/api.py run_query, retrieval fusion
 and reranking cut, app/llm.py run_rag) runs, so the events tested here are
 the ones the panel will see.
@@ -66,8 +66,6 @@ class FakeLLM:
         self.roles.append(role)
         text = {
             "generator": ANSWER,
-            "baseline:c0": "Yes, sellers must show a seal (from memory).",
-            "baseline:c1": "Yes, they must display the badge.",
             "ragas:groundedness": '{"claims": [{"claim": "Sellers must display the badge", "supported": true},'
                                   ' {"claim": "The fine is P1,000", "supported": false}]}',
             "ragas:answer_relevance": '{"questions": ["Must online sellers display the badge?", "Q2?", "Q3?"]}',
@@ -82,7 +80,7 @@ class FakeLLM:
 
 @pytest.fixture
 def fakes(monkeypatch):
-    from app import api, baselines, guard, llm_client, retrieval
+    from app import api, guard, llm_client, retrieval
     from rag_eval import embeddings_eval, judge
     llm = FakeLLM()
     monkeypatch.setattr(api.trace_log, "write", lambda tr: None)
@@ -95,11 +93,16 @@ def fakes(monkeypatch):
     monkeypatch.setattr(retrieval, "RERANK_ON", True)
     monkeypatch.setattr(retrieval.reranker, "rerank", lambda q, docs: [0.9, 0.5, 0.05][: len(docs)])
     monkeypatch.setattr(llm_client, "chat", llm)
-    monkeypatch.setattr(baselines, "_open_db", lambda: FakeChroma())
     monkeypatch.setattr(judge, "JUDGE_MODEL", "judge/independent-model")
     monkeypatch.setattr(embeddings_eval, "embed_for_matching",
                         lambda texts: [[1.0, 0.0]] + [[0.8, 0.6]] * (len(texts) - 1))
     monkeypatch.setattr(guard, "EVAL_LOCAL_ONLY", False)
+    # The test client counts as a visitor from the public link, so demo runs
+    # share /query's limits (v1.5); give the tests room and a clean slate.
+    monkeypatch.setattr(guard, "RATE_LIMIT_PER_MIN", 1000)
+    monkeypatch.setattr(guard, "DAILY_QUERY_CAP", 100000)
+    guard._hits.clear()
+    guard._bad_codes.clear()
     return llm
 
 
@@ -159,33 +162,6 @@ def test_events_do_not_change_the_answer(fakes):
     assert (quiet.answer, quiet.sources, quiet.outcome) == (loud.answer, loud.sources, loud.outcome)
 
 
-# ── Baselines ─────────────────────────────────────────────────────────────
-
-def test_c0_is_the_generator_alone(fakes):
-    from app import baselines
-    from app.llm import GENERATOR_MODEL
-    result, events = collect(lambda: baselines.run_c0("Do online sellers need a seal badge?"))
-    assert result.context == "" and result.answer.startswith("Yes")
-    assert fakes.roles == ["baseline:c0"]                 # no retrieval, no verifier
-    assert [e["step"] for e in events if e["status"] == "done"] == ["question", "llm_only", "final"]
-    assert next(e for e in events if e["step"] == "llm_only" and e["status"] == "done")["data"]["model"] == GENERATOR_MODEL
-
-
-def test_c1_is_dense_top4_with_the_standard_prompt_and_no_verifier(fakes, monkeypatch):
-    from app import baselines, retrieval
-    seen = {}
-
-    def semantic(db, query, k, year_filter):
-        seen.update(k=k, year=year_filter)
-        return fake_semantic(db, query, k, year_filter)
-    monkeypatch.setattr(retrieval, "_semantic_search", semantic)
-    result, events = collect(lambda: baselines.run_c1("Do online sellers need a seal badge?"))
-    assert seen == {"k": 4, "year": None}                 # dense only, top 4, no year filter
-    assert fakes.roles == ["baseline:c1"]                 # one generation, no verifier
-    assert result.context.startswith("[1] RMC No. 38-2026")
-    assert [e["step"] for e in events if e["status"] == "done"] == ["question", "dense", "llm_rag", "final"]
-
-
 # ── Demo metrics ──────────────────────────────────────────────────────────
 
 def test_demo_metrics_formulas(fakes):
@@ -219,28 +195,27 @@ def client(fakes):
     return TestClient(main.app)
 
 
-def test_demo_compare_all_streams_every_system(client):
+def test_demo_compare_with_revie_streams_both_systems(client, fakes):
     r, events = _run(client, query="Do online sellers need to display a BIR Registration Seal Badge?",
-                     compare="all", reference="Yes, they must display it.", revie_answer="I am not sure.")
+                     compare="revie", reference="Yes, they must display it.", revie_answer="I am not sure.")
     assert r.status_code == 200
-    assert events[0]["type"] == "start" and events[0]["systems"] == ["sagot", "c0", "c1", "c2"]
+    assert events[0]["type"] == "start" and events[0]["systems"] == ["sagot", "revie"]
     assert events[-1]["type"] == "done"
     assert not [e for e in events if e["type"] == "error"]
     answers = {e["system"]: e for e in events if e["type"] == "answer"}
-    assert set(answers) == {"sagot", "c0", "c1", "c2"}
-    assert answers["sagot"]["outcome"] == "verified" and answers["c2"]["answer"] == "I am not sure."
+    assert set(answers) == {"sagot", "revie"}
+    assert answers["sagot"]["outcome"] == "verified" and answers["revie"]["answer"] == "I am not sure."
     done_metrics = {(e["system"], e["metric"]): e["result"] for e in events
                     if e["type"] == "metric" and e["status"] == "done"}
-    assert len(done_metrics) == 12                                        # 4 systems x 3 metrics
-    assert done_metrics[("c0", "groundedness")]["score"] is None          # no retrieval
-    assert done_metrics[("c2", "groundedness")]["score"] is None          # REVIE's context is not visible
+    assert len(done_metrics) == 6                                         # 2 systems x 3 metrics
+    assert done_metrics[("revie", "groundedness")]["score"] is None       # REVIE's context is not visible
     assert done_metrics[("sagot", "groundedness")]["score"] == 0.5
-    steps = {e["system"] for e in events if e["type"] == "step"}
-    assert steps == {"sagot", "c0", "c1", "c2"}
+    assert {e["system"] for e in events if e["type"] == "step"} == {"sagot", "revie"}
+    assert not [role for role in fakes.roles if role.startswith("baseline")]   # no baseline model is called
 
 
-def test_demo_c2_requires_the_pasted_revie_answer(client):
-    r = client.post("/eval/api/run/demo", json={"query": "Is POGO banned?", "compare": "c2"})
+def test_demo_compare_requires_the_pasted_revie_answer(client):
+    r = client.post("/eval/api/run/demo", json={"query": "Is POGO banned?", "compare": "revie"})
     assert r.status_code == 422 and "REVIE" in r.json()["detail"]
 
 
@@ -252,8 +227,11 @@ def test_demo_greeting_is_not_scored(client):
 def test_demo_page_and_config_are_served(client):
     assert client.get("/demo").status_code == 200
     cfg = client.get("/demo/api/config").json()
-    assert set(cfg["systems"]) == {"sagot", "c0", "c1", "c2"}
-    assert cfg["compare_modes"]["all"] == ["sagot", "c0", "c1", "c2"]
+    assert set(cfg["systems"]) == {"sagot", "revie"}                     # v1.5: Sagot AI vs REVIE only
+    assert cfg["compare_modes"] == {"none": ["sagot"], "revie": ["sagot", "revie"]}
+    assert cfg["version"] == "v1.5"
+    for gone in ("c0", "c1", "c2", "all"):                               # removed comparison modes
+        assert client.post("/eval/api/run/demo", json={"query": "q?", "compare": gone}).status_code == 422
     assert set(cfg["metrics"]) == {"groundedness", "context_relevance", "answer_relevance"}
 
 
@@ -262,4 +240,51 @@ def test_demo_run_is_locked_to_the_host_computer(client, monkeypatch):
     monkeypatch.setattr(guard, "EVAL_LOCAL_ONLY", True)
     r = client.post("/eval/api/run/demo", json={"query": "Is POGO banned?", "compare": "none"},
                     headers={"x-forwarded-for": "8.8.8.8"})
+    assert r.status_code == 403
+
+
+# ── Team access for the public link (v1.5) ────────────────────────────────
+
+PUBLIC = {"x-forwarded-for": "8.8.8.8"}
+
+
+def test_team_code_unlocks_the_demo_on_the_public_link(client, monkeypatch):
+    from app import guard
+    monkeypatch.setattr(guard, "EVAL_LOCAL_ONLY", True)
+    monkeypatch.setattr(guard, "TEAM_ACCESS_CODE", "kalabaw-2026")
+    body = {"query": "hi", "compare": "none"}
+    no_code = client.post("/eval/api/run/demo", json=body, headers=PUBLIC)
+    assert no_code.status_code == 403 and "team access code" in no_code.json()["detail"]
+    ok = client.post("/eval/api/run/demo", json=body, headers={**PUBLIC, "x-team-code": "kalabaw-2026"})
+    assert ok.status_code == 200 and '"type": "done"' in ok.text
+    assert client.get("/team/api/status", headers={**PUBLIC, "x-team-code": "kalabaw-2026"}).json() == \
+        {"enabled": True, "valid": True, "host": False}
+    cfg = client.get("/demo/api/config", headers=PUBLIC).json()
+    assert cfg["can_run"] is False and cfg["team_code_enabled"] is True and "team access code" in cfg["lock_reason"]
+
+
+def test_wrong_team_codes_are_locked_out(client, monkeypatch):
+    from app import guard
+    monkeypatch.setattr(guard, "EVAL_LOCAL_ONLY", True)
+    monkeypatch.setattr(guard, "TEAM_ACCESS_CODE", "kalabaw-2026")
+    wrong = {**PUBLIC, "x-team-code": "guess"}
+    for _ in range(10):
+        assert client.post("/eval/api/run/demo", json={"query": "hi"}, headers=wrong).status_code == 403
+    assert client.post("/eval/api/run/demo", json={"query": "hi"}, headers=wrong).status_code == 429
+    # the right code from the same address is also refused until the window passes
+    right = {**PUBLIC, "x-team-code": "kalabaw-2026"}
+    assert client.post("/eval/api/run/demo", json={"query": "hi"}, headers=right).status_code == 429
+
+
+def test_public_demo_runs_share_the_query_rate_limit(client, monkeypatch):
+    from app import guard
+    monkeypatch.setattr(guard, "RATE_LIMIT_PER_MIN", 1)
+    assert client.post("/eval/api/run/demo", json={"query": "hi"}, headers=PUBLIC).status_code == 200
+    assert client.post("/eval/api/run/demo", json={"query": "hi"}, headers=PUBLIC).status_code == 429
+
+
+def test_team_code_never_opens_admin_routes(client, monkeypatch):
+    from app import guard
+    monkeypatch.setattr(guard, "TEAM_ACCESS_CODE", "kalabaw-2026")
+    r = client.delete("/reset", headers={**PUBLIC, "x-team-code": "kalabaw-2026"})
     assert r.status_code == 403

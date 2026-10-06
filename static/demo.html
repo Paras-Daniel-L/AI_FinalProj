@@ -59,7 +59,7 @@
       <div class="guide-head">
         <div>
           <h1>See how Sagot AI answers, step by step</h1>
-          <p class="muted">Type any BIR tax question below. Each answer shows the system's process as it happens, then three scores from an independent judge model. Pick a comparison to run the same question through the baselines.</p>
+          <p class="muted">Type any BIR tax question below. Each answer shows the system's process as it happens, then three scores from an independent judge model. Under <b>Options</b>, you can compare the same question with REVIE, BIR's own chatbot.</p>
         </div>
         <button type="button" class="iconbtn" id="btn-guide-close" title="Hide the guide"><span class="material-symbols-outlined">close</span></button>
       </div>
@@ -93,7 +93,7 @@
             <textarea id="ref-input" rows="3" maxlength="5000" placeholder="Paste or type the correct answer to this question. Leave empty and Answer Relevance shows N/A."></textarea>
           </details>
           <details id="revie-box" hidden>
-            <summary><span class="material-symbols-outlined">content_paste</span>REVIE's answer <span class="muted">(required for C2)</span><span class="filled-dot" id="revie-dot" hidden></span></summary>
+            <summary><span class="material-symbols-outlined">content_paste</span>REVIE's answer <span class="muted">(needed to compare)</span><span class="filled-dot" id="revie-dot" hidden></span></summary>
             <textarea id="revie-input" rows="3" maxlength="10000" placeholder="Ask REVIE the same question on the BIR website, then paste its answer here."></textarea>
           </details>
         </div>
@@ -110,6 +110,7 @@
     </div>
   </footer>
 
+  <script src="/static/js/team-access.js"></script>
   <script src="/static/js/demo.js"></script>
 </body>
 </html>

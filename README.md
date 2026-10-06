@@ -662,24 +662,34 @@ A third page, served by the same server, for showing the system live: <http://lo
 | Context Relevance | average cosine similarity between the user's question and 3 questions generated from the answer (the evaluation's Answer Relevance formula) |
 | Answer Relevance | facts in the operator's reference answer stated correctly ÷ all facts in the reference answer (the evaluation's Answer Correctness formula); N/A when no reference answer is typed |
 
-**Compare with** runs the same question through baselines that use the same model (`GENERATOR_MODEL`), so differences come from the framework:
+**Compare with REVIE** (under **Options**) runs the same question through Sagot AI and shows REVIE's answer next to it. Ask REVIE the same question on the BIR website and paste its answer into the **REVIE's answer** box first. **Compare the scores side by side** then shows both systems' three scores.
 
-| Option | Systems | What it shows |
-|---|---|---|
-| Sagot AI only | Sagot AI | The full framework |
-| vs C0 | + C0: the generator alone, no retrieval, no verifier | How much the raw LLM hallucinates on BIR questions |
-| vs C1 | + C1: standard RAG — dense search only (top `C1_TOP_K`, default 4), LangChain's standard QA prompt, no BM25/reranker, no language trigger, no verifier | The effect of retrieval by itself |
-| vs C2 | + C2: REVIE. Paste REVIE's answer into the **REVIE's answer** box first | The existing BIR chatbot |
-| vs All | all four, side by side, with a scoreboard at the end | |
+Since v1.5 the demo compares Sagot AI with REVIE only. The LLM-only (C0) and standard-RAG (C1) baselines were offered up to v1.3/v1.4 and removed: after the dense-search floor, standard RAG showed no meaningful difference, so the demo focuses on the project versus the existing BIR chatbot. Their code is in git tag `v1.3` (`app/baselines.py`) if the ablation is needed again.
 
-"N/A" means a score does not apply (C0 and REVIE retrieve no visible documents, so they have no Groundedness), never zero.
+"N/A" means a score does not apply (REVIE shows no retrieved documents, so it has no Groundedness), never zero.
 
-Files: `static/demo.html`, `static/js/demo.js`, `static/css/demo.css`, `rag_eval/demo_web.py` (page + streaming run endpoint `/eval/api/run/demo`), `rag_eval/demo_metrics.py` (the three scores), `app/baselines.py` (C0, C1), `app/progress.py` (the live step events; a no-op for the normal chatbot and the evaluation). Tests: `tests/test_demo.py`.
+Files: `static/demo.html`, `static/js/demo.js`, `static/css/demo.css`, `static/js/team-access.js`, `rag_eval/demo_web.py` (page + streaming run endpoint `/eval/api/run/demo`), `rag_eval/demo_metrics.py` (the three scores), `app/progress.py` (the live step events; a no-op for the normal chatbot and the evaluation). Tests: `tests/test_demo.py`.
 
 **Evaluation button hidden for the defense.** The **Evaluation** button is hidden on the chatbot and the demo so the panel isn't drawn to it; `/eval` itself works as before. To bring the button back, open <http://localhost:8000/?eval=1> once (remembered in that browser); `?eval=0` hides it again.
 
-**Cost and access.** Like the evaluation tool's run buttons, the demo only runs on the host computer (`EVAL_LOCAL_ONLY=1`), one question at a time. The cache is always bypassed so every step runs live. A "vs All" question costs roughly: Sagot AI 2–6 model calls, C0 and C1 one call each, and 3 judge calls + 1 Jina embedding call per system.
+**Cost and access.** The demo runs on the host computer, or for teammates on the public link who enter the team access code (see section 14). The cache is always bypassed so every step runs live. A question costs roughly Sagot AI's 2–6 model calls plus 3 judge calls and 1 Jina embedding call per system shown.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `C1_TOP_K` | `4` | Chunks the C1 baseline retrieves |
+| `DEMO_MAX_CONCURRENT` | `3` | Demo questions that may run at the same time (each visitor runs one at a time) |
+
+---
+
+## 14. Sharing with teammates (public link)
+
+`SHARING.md` has the full guide. In short:
+
+1. Put `TEAM_ACCESS_CODE=<8+ characters>` in `.env`.
+2. Double-click `share.bat`. It starts the server and a free Cloudflare tunnel, and prints a public `https://….trycloudflare.com` link.
+3. Send that link and the code to your teammates.
+
+Over the public link, the chatbot works for anyone, within the per-person and daily limits. The demo and the evaluation tool ask for the team code once. `/upload` and `/reset` stay host-only. A `Dockerfile` is included for always-on hosting (for example Hugging Face Spaces); see SHARING.md, Option B.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `TEAM_ACCESS_CODE` | *(unset)* | Code that lets teammates on the public link run the demo and evaluation tool. Unset = host computer only |

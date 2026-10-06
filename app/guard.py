@@ -31,6 +31,15 @@ Needed once the app is exposed through a tunnel (ngrok / Cloudflare Tunnel):
    at http://localhost:8000/eval to run tests; visitors on the public link
    can still read the guide and the thesis results.
 
+4. Team access (v1.5). With TEAM_ACCESS_CODE set, a teammate on the public
+   link can run the demo and the evaluation tool by entering that code in
+   the page (sent as the X-Team-Code header; compared in constant time).
+   Without the code the run endpoints stay host-only. Ten wrong codes from
+   one address within ten minutes lock that address out for the rest of the
+   ten minutes. Demo runs from the public link count toward the same
+   per-minute and daily limits as /query. /upload and /reset are never
+   opened by the code.
+
 Visitor IP: the tunnel appends the address it actually saw to the END of
 X-Forwarded-For. Anything before it was written by the visitor and can be
 faked, so the LAST entry is used. CF-Connecting-IP is only trusted when
@@ -42,6 +51,8 @@ Env vars (all optional):
     DAILY_QUERY_CAP         queries per day, all visitors       (default 100)
     ADMIN_LOCAL_ONLY        1 = lock /upload,/reset to this computer (default 1)
     EVAL_LOCAL_ONLY         1 = lock /eval/api/run... to this computer (default 1)
+    TEAM_ACCESS_CODE        a code that also unlocks /eval/api/run... for teammates on
+                            the public link (default: unset = host only). Use 8+ characters.
     TRUST_CF_CONNECTING_IP  1 = use Cloudflare's CF-Connecting-IP (default 0)
 State is in memory: it resets when the server restarts.
 
@@ -49,6 +60,7 @@ Budget note: the worst case is about 1.1 US cents per question (3 attempts,
 every token cap hit), so DAILY_QUERY_CAP=100 bounds a day at roughly $1.10.
 """
 
+import hmac
 import os
 import time
 from collections import defaultdict, deque
@@ -71,6 +83,13 @@ DAILY_QUERY_CAP = int(os.environ.get("DAILY_QUERY_CAP", "100"))
 ADMIN_LOCAL_ONLY = _flag("ADMIN_LOCAL_ONLY", "1")
 EVAL_LOCAL_ONLY = _flag("EVAL_LOCAL_ONLY", "1")
 TRUST_CF_CONNECTING_IP = _flag("TRUST_CF_CONNECTING_IP", "0")
+TEAM_ACCESS_CODE = os.environ.get("TEAM_ACCESS_CODE", "").strip()
+TEAM_CODE_HEADER = "x-team-code"
+DEMO_RUN_PATH = "/eval/api/run/demo"
+_BAD_CODE_LIMIT, _BAD_CODE_WINDOW = 10, 600
+
+if TEAM_ACCESS_CODE and len(TEAM_ACCESS_CODE) < 8:
+    print("⚠️  [Guard] TEAM_ACCESS_CODE is shorter than 8 characters; use a longer one before sharing the link.")
 
 ADMIN_PATHS = ("/upload", "/reset")
 EVAL_RUN_PREFIX = "/eval/api/run"
@@ -81,6 +100,7 @@ _PROXY_HEADERS = (
 _LOCAL_HOSTS = ("127.0.0.1", "::1", "localhost")
 
 _hits = defaultdict(deque)  # ip -> timestamps of recent /query calls
+_bad_codes = defaultdict(deque)  # ip -> timestamps of wrong team codes
 _day = {"date": date.today(), "count": 0}
 _last_prune = {"t": 0.0}
 
@@ -137,10 +157,28 @@ def is_host_request(request: Request) -> bool:
     return not (is_public(request) or is_cross_site(request))
 
 
+def team_code_enabled() -> bool:
+    return bool(TEAM_ACCESS_CODE)
+
+
+def has_team_code(request: Request) -> bool:
+    """True when the request carries the right team access code."""
+    sent = request.headers.get(TEAM_CODE_HEADER, "")
+    return bool(TEAM_ACCESS_CODE and sent) and hmac.compare_digest(sent.encode(), TEAM_ACCESS_CODE.encode())
+
+
+def _too_many_bad_codes(ip: str, now: float) -> bool:
+    q = _bad_codes[ip]
+    while q and now - q[0] > _BAD_CODE_WINDOW:
+        q.popleft()
+    return len(q) >= _BAD_CODE_LIMIT
+
+
 def can_run_evaluations(request: Request) -> bool:
-    """What rag_eval/web.py reports to the page, so it can explain the lock
-    instead of letting a visitor fill in a form that will be refused."""
-    return (not EVAL_LOCAL_ONLY) or is_host_request(request)
+    """What rag_eval/web.py and the demo report to the page, so it can explain
+    the lock (or ask for the team code) instead of letting a visitor fill in a
+    form that will be refused."""
+    return (not EVAL_LOCAL_ONLY) or is_host_request(request) or has_team_code(request)
 
 
 def _prune(now: float) -> None:
@@ -165,13 +203,26 @@ async def guard_middleware(request: Request, call_next):
             print(f"🛡️  [Guard] blocked admin request to {path} from {client_ip(request)}")
             return _blocked(403, "This action is only available on the host computer.")
 
+    if TEAM_ACCESS_CODE and request.headers.get(TEAM_CODE_HEADER):
+        ip, now = client_ip(request), time.time()
+        if _too_many_bad_codes(ip, now):
+            return _blocked(429, "Too many wrong team access codes. Wait ten minutes and try again.", _BAD_CODE_WINDOW)
+        if not has_team_code(request):
+            _bad_codes[ip].append(now)
+
+    host = is_host_request(request)
     if EVAL_LOCAL_ONLY and path.startswith(EVAL_RUN_PREFIX):
-        if not is_host_request(request):
+        if not host and not has_team_code(request):
             print(f"🛡️  [Guard] blocked evaluation run {path} from {client_ip(request)}")
+            if TEAM_ACCESS_CODE:
+                return _blocked(403, "This needs the team access code. Enter it on the page, or ask the person "
+                                     "hosting Sagot AI for it.")
             return _blocked(403, "Running evaluations is only available on the host computer "
                                  "(open http://localhost:8000/eval there).")
 
-    if path == "/query" and request.method == "POST":
+    # Demo runs from the public link cost at least as much as a question, so
+    # they share /query's limits (the presenter on the host computer is not limited).
+    if (path == "/query" or (path == DEMO_RUN_PATH and not host)) and request.method == "POST":
         today = date.today()
         if _day["date"] != today:
             _day["date"], _day["count"] = today, 0

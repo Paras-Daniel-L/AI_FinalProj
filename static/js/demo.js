@@ -12,14 +12,12 @@
 
 const API = { config: '/demo/api/config', run: '/eval/api/run/demo' };
 const METRIC_ORDER = ['groundedness', 'context_relevance', 'answer_relevance'];
-const SYS_ORDER = ['sagot', 'c0', 'c1', 'c2'];
-const SYS_COLOR = { sagot: 'var(--sagot)', c0: 'var(--c0)', c1: 'var(--c1)', c2: 'var(--c2)' };
+// v1.5: the demo compares Sagot AI with REVIE only.
+const SYS_ORDER = ['sagot', 'revie'];
+const SYS_COLOR = { sagot: 'var(--sagot)', revie: 'var(--revie)' };
 const MODES = [
   { id: 'none', label: 'Sagot AI only', systems: ['sagot'] },
-  { id: 'c0', label: 'vs C0 · LLM only', systems: ['sagot', 'c0'] },
-  { id: 'c1', label: 'vs C1 · Standard RAG', systems: ['sagot', 'c1'] },
-  { id: 'c2', label: 'vs C2 · REVIE', systems: ['sagot', 'c2'] },
-  { id: 'all', label: 'vs All (C0, C1, C2)', systems: ['sagot', 'c0', 'c1', 'c2'] },
+  { id: 'revie', label: 'Compare with REVIE', systems: ['sagot', 'revie'] },
 ];
 
 // Architecture strip per system: stage id, label, icon.
@@ -29,18 +27,14 @@ const PIPES = {
     ['retrieval', 'Hybrid retrieval', 'manage_search'], ['fusion', 'RRF fusion', 'merge'], ['rerank', 'Reranker', 'filter_alt'],
     ['generate', 'Generator', 'edit_note'], ['verify', 'Verifier', 'verified_user'], ['answer', 'Answer', 'task_alt'],
   ],
-  c0: [['question', 'Question', 'help'], ['llm', 'LLM only', 'psychology'], ['answer', 'Answer', 'task_alt']],
-  c1: [['question', 'Question', 'help'], ['dense', 'Dense search', 'search'], ['llm', 'LLM + standard prompt', 'psychology'], ['answer', 'Answer', 'task_alt']],
-  c2: [['question', 'Question', 'help'], ['revie', 'REVIE (external)', 'support_agent'], ['answer', 'Answer', 'task_alt']],
+  revie: [['question', 'Question', 'help'], ['revie', 'REVIE (external)', 'support_agent'], ['answer', 'Answer', 'task_alt']],
 };
 const STEP_STAGE = {
   sagot: { sanitize: 'input', language: 'language', intent: 'intent', route: 'intent', year_filter: 'intent',
            index: 'retrieval', cache: 'retrieval', semantic: 'retrieval', bm25: 'retrieval', issuance_id: 'retrieval',
            fusion: 'fusion', rerank: 'rerank', dense_floor: 'rerank', evidence: 'rerank', computation: 'generate',
            generate: 'generate', verify: 'verify', final: 'answer' },
-  c0: { question: 'question', llm_only: 'llm', final: 'answer' },
-  c1: { question: 'question', dense: 'dense', llm_rag: 'llm', final: 'answer' },
-  c2: { question: 'question', external: 'revie', final: 'answer' },
+  revie: { question: 'question', external: 'revie', final: 'answer' },
 };
 
 // Plain-language status line shown while a system works (the detailed,
@@ -50,7 +44,7 @@ function liveText(sys, ev) {
   switch (ev.step) {
     case 'sanitize': case 'language': case 'intent': case 'route': case 'year_filter':
       return 'Understanding the question';
-    case 'index': case 'cache': case 'semantic': case 'bm25': case 'issuance_id': case 'fusion': case 'dense':
+    case 'index': case 'cache': case 'semantic': case 'bm25': case 'issuance_id': case 'fusion':
       return 'Searching the BIR documents';
     case 'rerank': case 'dense_floor': case 'evidence':
       return 'Picking the most relevant excerpts';
@@ -60,12 +54,7 @@ function liveText(sys, ev) {
       return d.attempt > 1 ? `Rewriting the answer to fix what the checker flagged (attempt ${d.attempt})` : 'Writing the answer from the excerpts';
     case 'verify':
       return 'Double-checking every claim against the documents';
-    case 'llm_only':
-      return 'Answering from the model’s memory';
-    case 'llm_rag':
-      return 'Writing the answer';
     case 'question':
-      return sys === 'c2' ? 'Loading REVIE’s answer' : 'Reading the question';
     case 'external':
       return 'Loading REVIE’s answer';
     default:
@@ -224,28 +213,9 @@ function describe(sys, ev) {
       return { title: 'Result', kind: kind === 'warn' ? 'warn' : 'done',
         body: `${pill(text, kind)}${d.note ? ` <span class="why">${esc(d.note)}</span>` : ''}` };
     }
-    // Baselines
+    // REVIE (its answer is pasted in)
     case 'question':
-      return { title: 'Question received', kind: 'done',
-        body: sys === 'c0' ? 'Sent to the model exactly as typed: no documents, no grounding rules, no language instruction.'
-          : sys === 'c1' ? 'Used as-is for a dense search: no language trigger, no intent routing, no year routing.'
-          : 'The same question was asked to REVIE on the BIR website.' };
-    case 'llm_only':
-      if (run) return { title: `LLM only · ${esc(shortModel(d.model))}`, body: 'Answering from the model’s own memory…', kind: 'running' };
-      if (ev.status === 'failed') return { title: 'LLM only', body: esc(d.error), kind: 'failed' };
-      return { title: `LLM only · ${esc(shortModel(d.model))}`, kind: 'done',
-        body: `Answered from memory. Nothing was looked up and nothing was checked.${textBox('Show the raw output', d.draft)}` };
-    case 'dense':
-      if (run) return { title: `Dense search · top ${esc(d.k)}`, body: 'Searching by meaning only (no keyword search, no reranker)…', kind: 'running' };
-      if (ev.status === 'failed') return { title: 'Dense search', body: esc(d.error), kind: 'failed' };
-      return { title: `Dense search · top ${esc(d.k)}`, kind: 'done',
-        body: `Took the ${esc(d.n)} closest chunks as they are, relevant or not.${
-          (d.excerpts || []).map((x) => textBox(`${x.label} · dist ${Number(x.score).toFixed(3)}`, x.text)).join('')}` };
-    case 'llm_rag':
-      if (run) return { title: `LLM + standard RAG prompt · ${esc(shortModel(d.model))}`, body: `Answering from the ${esc(d.n_excerpts)} chunks with LangChain’s standard QA prompt…`, kind: 'running' };
-      if (ev.status === 'failed') return { title: 'LLM + standard RAG prompt', body: esc(d.error), kind: 'failed' };
-      return { title: `LLM + standard RAG prompt · ${esc(shortModel(d.model))}`, kind: 'done',
-        body: `Answer written in one pass. No verifier checks it.${textBox('Show the raw output', d.draft)}` };
+      return { title: 'Question received', kind: 'done', body: 'The same question was asked to REVIE on the BIR website.' };
     case 'external':
       return { title: 'REVIE (BIR chatbot)', kind: 'done', body: 'Answer pasted by the operator. REVIE’s own process is not visible from outside.' };
     default:
@@ -339,7 +309,7 @@ function setCompare(mode) {
   if (!MODES.some((m) => m.id === mode)) mode = 'none';
   state.compare = mode;
   document.querySelectorAll('#compare-modes button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === mode)));
-  const needsRevie = mode === 'c2' || mode === 'all';
+  const needsRevie = mode === 'revie';
   $('revie-box').hidden = !needsRevie;
   updateNote();
   if ($('mode-chips')) renderChips();
@@ -347,7 +317,7 @@ function setCompare(mode) {
 
 function updateNote() {
   $('composer-note').textContent = state.config && !state.config.can_run
-    ? 'Running questions is only available on the host computer.'
+    ? (state.config.team_code_enabled ? 'Enter the team access code to run questions.' : 'Running questions is only available on the host computer.')
     : '';
   if ($('mode-chips')) renderChips();
 }
@@ -545,10 +515,8 @@ class Turn {
   onAnswer(ev) {
     const card = this.cards[ev.system];
     if (!card) return;
-    // Baselines just "answer"; say what that means for each (the key contrast with Sagot AI's "Verified").
-    const [text, kind] = ev.outcome === 'answered'
-      ? (ev.system === 'c2' ? ['From REVIE', 'neutral'] : ['Not fact-checked', 'warn'])
-      : OUTCOME_TEXT[ev.outcome] || [ev.outcome, 'neutral'];
+    // REVIE just "answers"; label it as REVIE's (the contrast with Sagot AI's "Verified answer").
+    const [text, kind] = ev.outcome === 'answered' ? ['From REVIE', 'neutral'] : OUTCOME_TEXT[ev.outcome] || [ev.outcome, 'neutral'];
     card.el.querySelector('.opill').innerHTML = pill(text, kind);
     card.el.querySelector('.answer-body').innerHTML = md(ev.answer || '');
     card.el.querySelector('.answer').hidden = false;
@@ -654,7 +622,7 @@ class Turn {
         anyStar = anyStar || star;
         const info = infos[s] || {};
         return `<div class="brow" style="--sys:${SYS_COLOR[s]}">
-          <span class="bsys"><span class="sys-dot"></span>${esc(info.name || s)}${s === 'sagot' ? '' : `<span class="btag">${esc(info.tag || '')}</span>`}</span>
+          <span class="bsys"><span class="sys-dot"></span>${esc(info.name || s)}</span>
           <div class="bar"><i style="width:${v == null ? 0 : Math.max(2, v * 100)}%"></i></div>
           <span class="bval ${v == null ? 'na' : ''}">${v == null ? 'N/A' : pct(v)}${star ? ' <span class="star" title="Highest">★</span>' : ''}</span>
         </div>`;
@@ -689,12 +657,12 @@ function setRunning(on) {
 async function ask(query) {
   const reference = $('ref-input').value.trim();
   const revie = $('revie-input').value.trim();
-  const needsRevie = state.compare === 'c2' || state.compare === 'all';
+  const needsRevie = state.compare === 'revie';
   if (needsRevie && !revie) {
     setOptions(true);
     $('revie-box').open = true;
     $('revie-input').focus();
-    $('composer-note').textContent = 'C2 needs REVIE’s answer: ask REVIE the same question, paste its answer, then send.';
+    $('composer-note').textContent = 'Comparing needs REVIE’s answer: ask REVIE the same question, paste its answer, then send.';
     return;
   }
   const turn = new Turn(query, state.compare, !!reference);

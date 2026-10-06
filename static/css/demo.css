@@ -9,7 +9,7 @@
   --primary: #2563eb; --primary-ink: #1d4ed8; --primary-soft: #dbeafe;
   --good: #15803d; --good-soft: #dcfce7; --bad: #b91c1c; --bad-soft: #fee2e2;
   --warn: #b45309; --warn-soft: #fef3c7;
-  --sagot: #2563eb; --c0: #eb6834; --c1: #0d9488; --c2: #7c3aed;
+  --sagot: #2563eb; --revie: #7c3aed;
   --radius: 14px;
   --shadow: 0 1px 2px rgba(15, 23, 42, .05), 0 4px 16px rgba(15, 23, 42, .05);
 }
@@ -93,6 +93,9 @@ a { color: var(--primary); }
 .systems.n1 { grid-template-columns: minmax(0, 1fr); }
 .systems.n2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .systems.n4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* v1.4 "vs LLM & REVIE": Sagot AI across the top, the two comparisons side by side below. */
+.systems.n3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.systems.n3 > .sys:first-child { grid-column: 1 / -1; }
 
 /* ── One system's card ───────────────────────────────────────────────── */
 .sys { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); border-top: 3px solid var(--sys);
@@ -289,7 +292,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visibl
 
 @media (max-width: 1100px) {
   .board { grid-template-columns: minmax(0, 1fr); }
-  .systems.n2, .systems.n4 { grid-template-columns: minmax(0, 1fr); }
+  .systems.n2, .systems.n3, .systems.n4 { grid-template-columns: minmax(0, 1fr); }
   .sys-legend { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 720px) {

@@ -13,31 +13,39 @@ Version history (see VERSIONS.md for details):
     v1.3  + dense-search floor (the generator always sees the top-4 dense hits
             as well as the reranker's picks); prompt v3 (combine all relevant
             excerpts, up to ~80 words); version label
+    v1.4  demo compares Sagot AI with the LLM alone (C0) and REVIE (C2);
+            standard RAG (C1) removed from the demo. Answers same as v1.3.
+    v1.5  demo compares Sagot AI with REVIE only (C0 removed too); team
+            access code so teammates can test through a public link
+            (SHARING.md, share.ps1, Dockerfile). Answers same as v1.3.
 
 The answer-generation behavior of an older version can be reproduced with
 settings in .env (the code paths are kept):
     v1.0 / v1.1   RAG_PROMPT_VERSION=1  DENSE_FLOOR_K=0
     v1.2          RAG_PROMPT_VERSION=2  DENSE_FLOOR_K=0
-    v1.3          RAG_PROMPT_VERSION=3  DENSE_FLOOR_K=4   (the defaults)
+    v1.3 – v1.5   RAG_PROMPT_VERSION=3  DENSE_FLOOR_K=4   (the defaults)
 """
 
-SYSTEM_VERSION = "1.3.0"
-SYSTEM_VERSION_LABEL = "v1.3"
+SYSTEM_VERSION = "1.5.0"
+SYSTEM_VERSION_LABEL = "v1.5"
 
 # The .env settings that reproduce each version's answer generation.
 REPRODUCE = {
     "v1.1": {"RAG_PROMPT_VERSION": "1", "DENSE_FLOOR_K": "0"},
     "v1.2": {"RAG_PROMPT_VERSION": "2", "DENSE_FLOOR_K": "0"},
     "v1.3": {"RAG_PROMPT_VERSION": "3", "DENSE_FLOOR_K": "4"},
+    "v1.4": {"RAG_PROMPT_VERSION": "3", "DENSE_FLOOR_K": "4"},   # demo-only change: same answers as v1.3
+    "v1.5": {"RAG_PROMPT_VERSION": "3", "DENSE_FLOOR_K": "4"},   # demo + sharing change: same answers as v1.3
 }
 
 
 def effective_label() -> str:
-    """The version label the CURRENT settings actually reproduce, e.g. "v1.3",
-    or "v1.3 (custom settings)" when .env overrides them into a mix."""
+    """The version label the CURRENT settings actually reproduce, e.g. "v1.5",
+    or "v1.5 (custom settings)" when .env overrides them into a mix."""
     from . import prompts, retrieval
     current = {"RAG_PROMPT_VERSION": prompts.RAG_PROMPT_VERSION, "DENSE_FLOOR_K": str(retrieval.DENSE_FLOOR_K)}
-    for label, settings in REPRODUCE.items():
+    # Newest first: v1.4 and v1.5 answer exactly like v1.3, so the current version wins the tie.
+    for label, settings in reversed(list(REPRODUCE.items())):
         if settings == current:
             return label
     return f"{SYSTEM_VERSION_LABEL} (custom settings)"

@@ -6,19 +6,20 @@ Relevance and Answer Relevance (see rag_eval/demo_metrics.py for exactly how
 each is computed). There are no built-in questions: the operator types any
 question, like in the normal chat.
 
-Compare modes (one question, several systems side by side, same model):
-    none  Sagot AI only
-    c0    Sagot AI vs C0 — the generator model alone (no retrieval)
-    c1    Sagot AI vs C1 — standard RAG (dense search only, no language
-          trigger, no verifier)
-    c2    Sagot AI vs C2 — REVIE, BIR's chatbot (its answer is pasted in)
-    all   Sagot AI vs C0, C1 and C2
-See app/baselines.py for C0 and C1.
+Compare modes (v1.5: the demo compares Sagot AI with REVIE only):
+    none   Sagot AI only
+    revie  Sagot AI vs REVIE, BIR's chatbot (its answer is pasted in)
+The LLM-only (C0) and standard-RAG (C1) baselines were removed in v1.4/v1.5:
+after the dense-search floor (v1.3) standard RAG showed no meaningful
+difference, so the demo focuses on the project vs REVIE. Their code is in
+git tag v1.3 (app/baselines.py) if the ablation is ever needed again.
 
 This page does not change the thesis evaluation tool (/eval) or the chatbot.
-Its run endpoint lives under /eval/api/run/ on purpose: app/guard.py already
-locks that prefix to the host computer, because every run makes paid model
-calls (generator, verifier, judge, Jina) with no per-visitor limit.
+Its run endpoint lives under /eval/api/run/ on purpose: app/guard.py locks
+that prefix to the host computer or to teammates who enter the team access
+code (TEAM_ACCESS_CODE, see SHARING.md), because every run makes paid model
+calls (generator, verifier, judge, Jina). Each visitor runs one question at a
+time, at most DEMO_MAX_CONCURRENT at once overall.
 
 The run endpoint streams newline-delimited JSON (one event per line):
     {"type": "start",  "systems": [...], "metrics_available": bool, ...}
@@ -30,6 +31,7 @@ The run endpoint streams newline-delimited JSON (one event per line):
 """
 
 import json
+import os
 import queue
 import threading
 import time
@@ -48,21 +50,24 @@ from . import demo_metrics, judge
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = PROJECT_ROOT / "static"
 
-SAGOT, C0, C1, C2 = "sagot", "c0", "c1", "c2"
+SAGOT, REVIE = "sagot", "revie"
 COMPARE_MODES: Dict[str, List[str]] = {
     "none": [SAGOT],
-    "c0": [SAGOT, C0],
-    "c1": [SAGOT, C1],
-    "c2": [SAGOT, C2],
-    "all": [SAGOT, C0, C1, C2],
+    "revie": [SAGOT, REVIE],
 }
 
 # Sagot AI replies that are not an answer to a tax question: no metrics.
 _NO_METRIC_MODES = {"greeting", "chat", "clarify", "rejected", "computation_input"}
 RUN_TIMEOUT_S = 600
 
+DEMO_MAX_CONCURRENT = max(1, int(os.environ.get("DEMO_MAX_CONCURRENT", "3")))
+
 router = APIRouter()
-_run_lock = threading.Lock()
+# One run per visitor at a time (a double-click must not double the bill), and
+# a few at once overall so teammates testing together don't block each other.
+_slots = threading.BoundedSemaphore(DEMO_MAX_CONCURRENT)
+_active: set = set()
+_active_lock = threading.Lock()
 
 
 class DemoRequest(BaseModel):
@@ -74,7 +79,6 @@ class DemoRequest(BaseModel):
 
 
 def _systems_info() -> Dict[str, Dict[str, Any]]:
-    from app.baselines import C1_TOP_K
     from app.llm import GENERATOR_MODEL, MAX_RAG_RETRIES, VERIFIER_MODEL
     from app.retrieval import DENSE_FLOOR_K
     return {
@@ -83,13 +87,8 @@ def _systems_info() -> Dict[str, Dict[str, Any]]:
                                 f"{f', plus the top {DENSE_FLOOR_K} dense hits' if DENSE_FLOOR_K > 0 else ''}), "
                                 f"language trigger, {GENERATOR_MODEL} generator, {VERIFIER_MODEL} verifier "
                                 f"(up to {MAX_RAG_RETRIES} attempts), fails closed.")},
-        C0: {"name": "C0", "tag": "LLM only",
-             "description": f"{GENERATOR_MODEL} alone: no retrieval, no verifier. How much the raw LLM hallucinates."},
-        C1: {"name": "C1", "tag": "Standard RAG",
-             "description": (f"Dense search only (top {C1_TOP_K}) + standard QA prompt, same model: "
-                             "no BM25/reranker, no language trigger, no verifier. The effect of retrieval itself.")},
-        C2: {"name": "C2", "tag": "REVIE",
-             "description": "BIR's REVIE chatbot. Its answer is pasted in; its retrieval is not visible."},
+        REVIE: {"name": "REVIE", "tag": "BIR's chatbot",
+                "description": "BIR's own REVIE chatbot. Its answer is pasted in; which documents it used is not visible."},
     }
 
 
@@ -113,13 +112,24 @@ def demo_page():
     return FileResponse(page, media_type="text/html")
 
 
+@router.get("/team/api/status")
+def team_status(request: Request):
+    """For static/js/team-access.js: is a team code in use, is the one this
+    browser sent right, and is this the host computer (which needs none)."""
+    return {"enabled": guard.team_code_enabled(), "valid": guard.has_team_code(request),
+            "host": guard.is_host_request(request)}
+
+
 @router.get("/demo/api/config")
 def demo_config(request: Request):
     from app.llm import GENERATOR_MODEL, VERIFIER_MODEL
     can_run = guard.can_run_evaluations(request)
     return {
         "can_run": can_run,
+        "team_code_enabled": guard.team_code_enabled(),
         "lock_reason": None if can_run else (
+            "Enter the team access code to run questions. Ask the person hosting Sagot AI for it."
+            if guard.team_code_enabled() else
             "You are viewing this page through the public link. The demo makes paid model calls, so it only "
             "runs on the host computer at http://localhost:8000/demo."),
         **_judge_status(),
@@ -168,17 +178,6 @@ def _run_sagot(req: DemoRequest) -> Dict[str, Any]:
     }
 
 
-def _run_baseline(system: str, req: DemoRequest) -> Dict[str, Any]:
-    from app import baselines
-    result = baselines.run_c0(req.query) if system == C0 else baselines.run_c1(req.query)
-    if result.outcome == "error":
-        raise RuntimeError(result.error or "the model call failed")
-    return {"answer": result.answer, "context": result.context, "sources": result.sources,
-            "outcome": result.outcome, "mode": "baseline", "skip_metrics": False,
-            "no_context_reason": "C0 has no retrieval: the model answers from memory alone, "
-                                 "so there are no documents to check its claims against."}
-
-
 def _run_revie(req: DemoRequest) -> Dict[str, Any]:
     progress.emit("question", query=req.query)
     progress.emit("external", source="REVIE (pasted by the operator)", answer=req.revie_answer)
@@ -194,12 +193,7 @@ def _worker(system: str, req: DemoRequest, put: Callable[[Dict[str, Any]], None]
     started = time.monotonic()
     try:
         with progress.listening(lambda ev: put({"type": "step", "system": system, **ev})):
-            if system == SAGOT:
-                out = _run_sagot(req)
-            elif system in (C0, C1):
-                out = _run_baseline(system, req)
-            else:
-                out = _run_revie(req)
+            out = _run_sagot(req) if system == SAGOT else _run_revie(req)
         answer_event = {k: v for k, v in out.items() if k not in ("context", "no_context_reason", "skip_metrics")}
         put({"type": "answer", "system": system, **answer_event,
              "has_context": bool(out["context"].strip()), "answer_elapsed_s": round(time.monotonic() - started, 1)})
@@ -224,15 +218,26 @@ def _worker(system: str, req: DemoRequest, put: Callable[[Dict[str, Any]], None]
         put({"type": "system_done", "system": system, "elapsed_s": round(time.monotonic() - started, 1)})
 
 
+def _release(who: str) -> None:
+    with _active_lock:
+        _active.discard(who)
+    _slots.release()
+
+
 @router.post("/eval/api/run/demo")
-def run_demo(req: DemoRequest):
+def run_demo(req: DemoRequest, request: Request):
     systems = COMPARE_MODES.get(req.compare)
     if systems is None:
         raise HTTPException(422, f"Unknown compare mode {req.compare!r}.")
-    if C2 in systems and not req.revie_answer.strip():
-        raise HTTPException(422, "Paste REVIE's answer to this question first (C2 needs it).")
-    if not _run_lock.acquire(blocking=False):
-        raise HTTPException(409, "A demo question is still running. Wait for it to finish.")
+    if REVIE in systems and not req.revie_answer.strip():
+        raise HTTPException(422, "Paste REVIE's answer to this question first.")
+    who = guard.client_ip(request)
+    with _active_lock:
+        if who in _active:
+            raise HTTPException(409, "Your previous question is still running. Wait for it to finish.")
+        if not _slots.acquire(blocking=False):
+            raise HTTPException(429, "The demo is busy answering other testers' questions. Try again in a minute.")
+        _active.add(who)
 
     status = _judge_status()
     events: "queue.Queue[Dict[str, Any]]" = queue.Queue()
@@ -250,12 +255,12 @@ def run_demo(req: DemoRequest):
             for t in threads:
                 t.join(RUN_TIMEOUT_S)
         finally:
-            _run_lock.release()
+            _release(who)
 
     try:
         threading.Thread(target=supervise, daemon=True, name="demo-supervisor").start()
     except Exception:
-        _run_lock.release()
+        _release(who)
         raise
 
     def stream():

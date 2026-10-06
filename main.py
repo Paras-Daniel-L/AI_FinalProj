@@ -22,7 +22,7 @@ try:
     from rag_eval.web import router as eval_router
     app.include_router(eval_router)
     # The live demo page (/demo): chat + live process view + three metrics,
-    # with the C0/C1/C2 comparisons (rag_eval/demo_web.py, app/baselines.py).
+    # with the Sagot AI vs REVIE comparison (rag_eval/demo_web.py).
     from rag_eval.demo_web import router as demo_router
     app.include_router(demo_router)
 except ImportError as e:
