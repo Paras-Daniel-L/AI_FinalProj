@@ -3,9 +3,34 @@ System and task prompts used by the RAG chatbot.
 
 Pulled out of api.py so the wording can be tweaked without touching
 routing/request-handling code.
+
+Two versions of the GENERATION prompts exist (the verifier prompts are the
+same in both):
+
+    RAG_PROMPT_VERSION=2  (default) Concise. Modeled on the standard RAG
+                          prompt (LangChain's "use the following pieces of
+                          context..."), which gave shorter, more direct answers
+                          in testing, while keeping everything the architecture
+                          needs: grounding-only, the NO_ANSWER sentinel
+                          (fail-closed path), the language instruction (language
+                          trigger), [n] citations (sources + verifier), the
+                          meaning-matching note for Filipino/Taglish questions,
+                          and the verifier's audit notice on retries.
+    RAG_PROMPT_VERSION=1  The prompt the thesis evaluation in
+                          rag_eval/results_v2 was run with. Kept unchanged so
+                          those results can be reproduced.
+
+The answer cache key includes the prompt text (app/cache.py), so switching
+versions never serves an answer written under the other one.
 """
 
-SYSTEM_PROMPT = """You are Sagot AI, an AI assistant specializing exclusively in Philippine BIR (Bureau of Internal Revenue) tax regulations and rulings.
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()  # RAG_PROMPT_VERSION may be set in .env; read it before choosing below
+
+SYSTEM_PROMPT_V1 = """You are Sagot AI, an AI assistant specializing exclusively in Philippine BIR (Bureau of Internal Revenue) tax regulations and rulings.
 
 You have no general-knowledge or open-domain conversation mode, and no other subject-matter specialty — your only job is answering BIR tax questions grounded in the documents you are given.
 
@@ -26,7 +51,7 @@ NO_ANSWER_SENTINEL = "NO_ANSWER"
 # purpose. None is taken from the T-TED evaluation questions — putting test
 # questions (or their answers) in the prompt would leak the test set into the
 # system being tested.
-RAG_PROMPT = """You are Sagot AI. Use the retrieved document excerpts below as your ONLY source of factual information to answer the user's question.
+RAG_PROMPT_V1 = """You are Sagot AI. Use the retrieved document excerpts below as your ONLY source of factual information to answer the user's question.
 
 LANGUAGE: Respond entirely in {user_language} — matching the user's own question exactly. Do not switch to the language of the retrieved documents below if it differs from the user's language.
 
@@ -57,6 +82,42 @@ CONVERSATION HISTORY:
 USER QUESTION: {question}
 
 Answer:"""
+
+# ── Version 2: concise (default) ─────────────────────────────────────────
+# Same placeholders as version 1, so app/llm.py fills either one. The examples
+# stay generic: nothing from the T-TED evaluation set is in either prompt.
+SYSTEM_PROMPT_V2 = """You are Sagot AI, an assistant for Philippine BIR (Bureau of Internal Revenue) tax regulations and rulings.
+
+You answer only from the document excerpts you are given, never from memory or general knowledge. You reply in the same language as the user's question (English, Filipino or Taglish), even when the excerpts are in English.
+
+You are brief and direct: the answer first, then only the detail that makes it precise."""
+
+RAG_PROMPT_V2 = """Use the numbered excerpts below to answer the question at the end.
+
+- Use only facts stated in the excerpts. Do not add anything from memory.
+- The question may use other words, or Filipino or Taglish, while the excerpts use English legal wording: match on meaning. An excerpt that states the rule, condition, rate, date or purpose the question asks about answers it.
+- If no excerpt addresses the question at all, reply with exactly {no_answer_sentinel} and nothing else. If the excerpts answer only part of the question, answer that part.
+- If excerpts give different figures for the same thing, use the one they present as current or revised.
+- Write in {user_language}.
+- Be concise: one to three short sentences, about 60 words at most. Start with the direct answer (for a yes/no question: "Yes" or "No" in English, "Oo" or "Hindi" in Filipino or Taglish), then give only the key figure, date or condition. Use a short list only when the question asks for several items. No background and no closing advice.
+- After each fact, cite the excerpt number it comes from, like [1].
+
+EXCERPTS:
+{context}
+
+CONVERSATION HISTORY:
+{history}
+{audit_notice}
+USER QUESTION: {question}
+
+Answer:"""
+
+RAG_PROMPT_VERSION = os.environ.get("RAG_PROMPT_VERSION", "2").strip()
+if RAG_PROMPT_VERSION not in ("1", "2"):
+    print(f"⚠️  [Prompts] RAG_PROMPT_VERSION={RAG_PROMPT_VERSION!r} is not 1 or 2; using 2.")
+    RAG_PROMPT_VERSION = "2"
+SYSTEM_PROMPT = SYSTEM_PROMPT_V2 if RAG_PROMPT_VERSION == "2" else SYSTEM_PROMPT_V1
+RAG_PROMPT = RAG_PROMPT_V2 if RAG_PROMPT_VERSION == "2" else RAG_PROMPT_V1
 
 # ── Hallucination verifier (output phase) ────────────────────────────────
 # A dedicated skeptical-auditor persona. Deliberately NOT SYSTEM_PROMPT: that

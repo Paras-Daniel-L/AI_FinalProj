@@ -467,6 +467,7 @@ API keys set. Add overrides to `.env`.
 | `VERIFIER_PROVIDERS` | *(none)* | Same, for the verifier |
 | `LLM_ALLOW_FALLBACKS` | `1` | `0` = only ever use the pinned host above (use for evaluation runs) |
 | `MAX_RAG_RETRIES` | `3` | Generate→verify attempts before the fixed refusal |
+| `RAG_PROMPT_VERSION` | `2` | Generation prompt: `2` = concise (1–3 sentences, ~60 words, cited); `1` = the original prompt used for the evaluation in `rag_eval/results_v2`. Recorded in every evaluation `summary.json` |
 | `LLM_DISABLE_THINKING` | `1` | Keep at `1` — reasoning tokens are billed as output and can multiply cost |
 | `LLM_BASE_URL` | `https://openrouter.ai/api/v1` | Change only for a non-OpenRouter endpoint |
 | `LLM_TIMEOUT` | `90` | Seconds per HTTP request |
@@ -537,6 +538,14 @@ API keys set. Add overrides to `.env`.
 
 ## 10. Design decisions worth knowing before you change something
 
+- **Concise generation prompt (version 2, the default).** The original prompt
+  asked for a restated first sentence plus two or three supporting bullets
+  (median 88 words in the query logs). Version 2 follows the standard RAG
+  prompt's direct style (1–3 sentences, about 60 words) and keeps everything
+  the pipeline relies on: grounding-only, `NO_ANSWER`, the language
+  instruction, `[n]` citations and the verifier's audit notice. Retrieval,
+  the verifier and fail-closed refusal are unchanged. `RAG_PROMPT_VERSION=1`
+  restores the original prompt (to reproduce `rag_eval/results_v2`).
 - **No query rewriter, no translation step.** The system answers directly in
   whatever language the question was asked in; nothing is generated in
   English and translated afterward (which would add an unverified step
