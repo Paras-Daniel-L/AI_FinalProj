@@ -1,0 +1,62 @@
+{
+  "rule_id": "ph-employee-income-tax-from-gross-pay",
+  "tax_type": "income_tax_compensation",
+  "method": "compensation_from_gross",
+  "jurisdiction": "PH",
+  "document_type": "tax_computation_rule",
+  "computation_related": true,
+  "name": {
+    "english": "Income tax on compensation, computed from gross pay",
+    "filipino": "Income tax sa sahod, kinukwenta mula sa gross pay",
+    "taglish": "Income tax sa compensation, computed from gross pay"
+  },
+  "applies_to": "Purely compensation earners (employees), not minimum wage earners. Taxable compensation = annual gross pay - mandatory employee contributions + 13th-month pay and other benefits in excess of the exclusion cap; then the graduated table for the same tax year (tax_rules/income_tax_graduated.json).",
+  "uses": {
+    "schedule": "income_tax_graduated",
+    "contributions": "employee_contributions"
+  },
+  "inputs": {
+    "tax_year": {"type": "year", "required": true},
+    "gross_pay": {"type": "amount", "required": true, "min": "0"},
+    "pay_period": {"type": "enum", "required": true, "values": ["monthly", "semi_monthly", "weekly", "annual"]},
+    "benefits": {"type": "amount", "required": false, "min": "0", "default": "0"},
+    "contributions": {"type": "amount", "required": false, "min": "0"},
+    "tax_withheld": {"type": "amount", "required": false, "min": "0"}
+  },
+  "kb_references": [
+    {
+      "title": "Employee_Compensation_Tax_Reference",
+      "page": 1,
+      "what": "Exclusions from taxable compensation: mandatory contributions (NIRC Sec. 32(B)(7)(f)) and 13th month pay and other benefits up to P90,000 (Sec. 32(B)(7)(e)); no personal or dependent exemptions (RA 10963 Sec. 12)."
+    },
+    {
+      "title": "BIR_Income_Tax_FAQ",
+      "page": 2,
+      "what": "Exclusions from gross income include 13th month pay and other benefits not exceeding P90,000, and GSIS, SSS, Medicare and other contributions (Question 5)."
+    }
+  ],
+  "versions": [
+    {
+      "version_id": "train-compensation-2018-onwards",
+      "tax_year_from": 2018,
+      "tax_year_to": 2026,
+      "label": {
+        "english": "TRAIN rules for compensation income (tax years 2018 onwards)",
+        "filipino": "TRAIN rules para sa kita mula sa sahod (taong 2018 pataas)",
+        "taglish": "TRAIN rules para sa compensation income (tax years 2018 onwards)"
+      },
+      "legal_basis": "NIRC Sec. 32(B)(7)(e) as amended by RA 10963 (13th-month pay and other benefits excluded up to P90,000); NIRC Sec. 32(B)(7)(f) (GSIS, SSS, Medicare and Pag-ibig contributions excluded); RA 10963 Sec. 12 (repeal of personal and additional exemptions, NIRC Sec. 35); rates per Sec. 24(A)(2)(a)",
+      "benefits_exclusion_cap": "90000",
+      "periods_per_year": {"monthly": "12", "semi_monthly": "24", "weekly": "52", "annual": "1"},
+      "sources": [
+        {"title": "RA 10963 (TRAIN Law): Sec. 32(B)(7)(e) P90,000 ceiling; Sec. 12 repeal of Sec. 35", "url": "https://lawphil.net/statutes/repacts/ra2017/ra_10963_2017.html"},
+        {"title": "RA 8424 (NIRC of 1997), Sec. 32(B)(7)(f): GSIS, SSS, Medicare and Pag-ibig contributions, and union dues of individuals", "url": "https://lawphil.net/statutes/repacts/ra1997/ra_8424_1997.html"}
+      ],
+      "verification": {
+        "status": "verified",
+        "checked_on": "2026-10-06",
+        "notes": "periods_per_year is arithmetic (12 months, 24 half-months, 52 weeks), not a legal rate. Daily pay is deliberately not annualized: the number of paid days per year varies by employer, so the user is asked for a monthly or annual figure instead. Union dues are also excluded under Sec. 32(B)(7)(f) but are not computed; the user can include them in a manually entered contributions total."
+      }
+    }
+  ]
+}

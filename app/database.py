@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import shutil
 from collections import Counter
@@ -40,7 +41,7 @@ DATA_PATH   = "data"
 # loaded, no matter its name or depth. Board games are gone: the corpus is
 # scoped to BIR tax content only (data/monopoly, data/ticket_to_ride should
 # be deleted from disk and the DB re-ingested with --reset).
-YEAR_FOLDERS = ["2001", "2002", "2003", "2022", "2023", "2024", "2025", "2026", "faq"]
+YEAR_FOLDERS = ["2001", "2002", "2003", "2022", "2023", "2024", "2025", "2026", "faq", "reference"]
 
 # ── Chunking settings ─────────────────────────────────────────────────────
 # CHUNKING_MODE=sentence (default): clean the PDF text, repair split words,
@@ -143,6 +144,7 @@ def load_documents():
         ocr_new = ocr_replaced = 0
         for doc in docs:
             doc.metadata["year"] = category
+            apply_document_metadata(doc, category)
             # Scanned pages: no text layer -> OCR; a poor hidden text layer on
             # a full-page scan -> OCR and keep the cleaner text. Cached on disk
             # by file hash, so --reset doesn't redo the work. See app/ocr.py.
@@ -182,6 +184,54 @@ def load_documents():
     print(f"\n📊 Total pages loaded: {len(all_docs)}")
     _print_category_summary(all_docs)
     return all_docs
+
+
+DOCUMENT_METADATA_PATH = os.path.join("config", "document_metadata.json")
+_document_metadata_cache: dict = {}
+
+
+def _document_metadata() -> dict:
+    """config/document_metadata.json, read once ({} if missing or invalid)."""
+    if "data" not in _document_metadata_cache:
+        data = {}
+        try:
+            with open(DOCUMENT_METADATA_PATH, encoding="utf-8") as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError) as e:
+            print(f"⚠️  {DOCUMENT_METADATA_PATH} could not be read, using defaults: {e}")
+        _document_metadata_cache["data"] = data
+    return _document_metadata_cache["data"]
+
+
+def apply_document_metadata(doc: Document, category: str) -> None:
+    """
+    Stamp the knowledge-base metadata that tells document kinds apart:
+    document_type (issuance / faq / tax_rule_source), tax_type, tax_year,
+    jurisdiction, computation_related, rule_ids. Values come from
+    config/document_metadata.json (per-folder defaults, then per-file
+    overrides). Every chunk gets every field (Chroma metadata must be scalar,
+    so missing values are "" / False), so `where` filters such as
+    {"computation_related": True} or {"document_type": "faq"} work uniformly.
+
+    Retrieval does not filter on these yet: they add traceability, and let
+    the computation path and future filters find rule documents without
+    changing chunk ids.
+    """
+    cfg = _document_metadata()
+    defaults = cfg.get("defaults_by_category") or {}
+    fields = {
+        "document_type": "issuance", "tax_type": "", "tax_year": "",
+        "jurisdiction": "PH", "computation_related": False, "rule_ids": "",
+    }
+    fields.update(defaults.get("*") or {})
+    fields.update(defaults.get(category) or {})
+    filename = os.path.basename(str(doc.metadata.get("source", "")).replace("\\", "/"))
+    fields.update((cfg.get("files") or {}).get(filename) or {})
+    for key, value in fields.items():
+        if isinstance(value, (str, bool, int, float)):
+            doc.metadata[key] = value
 
 
 def _print_category_summary(all_docs: list[Document]) -> None:

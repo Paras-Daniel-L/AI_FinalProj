@@ -38,6 +38,14 @@ User question
    (greetings.py)      call, no retrieval
    │
    ▼
+3b. INTENT            CHAT ("what can you do?") → fixed reply
+   (intent.py)        TAX_COMPUTATION ("magkano tax ko kung 800k…") →
+                        deterministic calculator (app/computation/), NO model
+                        call; asks for missing inputs over several turns
+                      too vague ("tax?", "VAT") → clarifying question
+                      everything else → continues below (RAG)
+   │
+   ▼
 4. YEAR ROUTING       an explicit citation ("RMC 34-2024") or a single
    (classifier.py)     unambiguous year → hard-filter search to that year;
                         two different years mentioned → search everything
@@ -63,12 +71,18 @@ User question
    ├─ passed ──────────────────────────────► verified answer, cached, returned
    │
    └─ failed → retry generate+verify, up to 3 attempts total
-                 → still failed after 3 → fixed refusal message, never cached
+                 → still failed after 3 → guidance (recovery.py), never cached
 ```
 
 **Nothing the user sees was written by only one model.** Either a claim
 survived a second, differently-sourced model checking it against the actual
-source text, or the user gets a plain "I couldn't find an answer to that."
+source text, or the user gets guidance instead of an answer: an honest "I
+don't have enough information in my documents to answer that yet", a
+clarifying question, example questions the system can answer, and the
+closest documents it found. No model writes that guidance and it states no
+tax facts. Tax computations never go through a model at all: the numbers
+come from verified rule files in `tax_rules/` and deterministic code. See
+`CONVERSATION_AND_COMPUTATION.md`.
 
 ### Why two different models
 
@@ -102,6 +116,7 @@ thesisFinal/
 ├── .env                          secrets and settings (never committed)
 ├── .gitignore
 ├── README.md                     this file
+├── CONVERSATION_AND_COMPUTATION.md   recovery + tax computation: design, flows, tests
 │
 ├── app/
 │   ├── api.py            FastAPI routes: /, /query, /status, /upload, /reset
@@ -119,7 +134,19 @@ thesisFinal/
 │   ├── llm.py            the generate → verify → retry loop
 │   ├── llm_client.py     low-level OpenRouter HTTP client (retries, cost, thinking off)
 │   ├── prompts.py        every prompt and every fixed (canned) message
-│   └── schemas.py        request/response models
+│   ├── schemas.py        request/response models (incl. ComputationState)
+│   ├── intent.py         CHAT / TAX_INFORMATION / TAX_COMPUTATION / OUT_OF_SCOPE routing
+│   ├── recovery.py       guidance instead of dead-end refusals (no model call)
+│   └── computation/      deterministic tax computation
+│       ├── rules.py        loads + validates tax_rules/*.json (`python -m app.computation.rules`)
+│       ├── calculator.py   Decimal arithmetic, step-by-step breakdown
+│       ├── extract.py      amounts / years / situation from EN, Filipino, Taglish
+│       ├── dialogue.py     multi-turn input collection and validation
+│       └── messages.py     every computation sentence, in 3 languages
+│
+├── tax_rules/            versioned rate and contribution rules with legal basis + verification record
+├── tools/build_reference_note.py   builds data/reference/Employee_Compensation_Tax_Reference.pdf
+├── config/document_metadata.json   document_type / tax_type / ... stamped at ingestion
 │
 ├── static/
 │   ├── index.html        the chat UI

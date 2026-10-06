@@ -3,6 +3,10 @@
 ═══════════════════════════════════════════════ */
 let messages = [];
 let isLoading = false;
+// The tax computation in progress, exactly as the server last returned it
+// (QueryResponse.computation). Sent back with the next message so the server
+// can continue the computation; null when there is none.
+let computationState = null;
 const API_BASE = ''; // Backend server origin (FastAPI)
 
 // Only the most recent turns are sent. The server ignores history unless
@@ -52,8 +56,9 @@ function switchToChatView() {
 function newChat() {
   if (isLoading) return;
   
-  // 1. Wipe the backend message history array
+  // 1. Wipe the backend message history array (and any open computation)
   messages = [];
+  computationState = null;
   
   // 2. Clear the UI chat history, but keep the typing indicator
   const chatHistory = document.getElementById('chat-history');
@@ -123,7 +128,7 @@ async function sendMessage(query) {
     const res = await fetch(`${API_BASE}/query`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, history }),
+      body: JSON.stringify({ query, history, computation_state: computationState }),
     });
 
     if (!res.ok) {
@@ -136,6 +141,8 @@ async function sendMessage(query) {
     }
 
     const data = await res.json();
+    // The server decides whether a computation stays open; null clears it.
+    computationState = data.computation || null;
     const botMsg = {
       role: 'assistant',
       content: data.answer,
@@ -193,14 +200,21 @@ function appendBotBubble(msg) {
   row.className = 'flex flex-col items-start gap-space-xs self-start max-w-3xl w-full';
 
   // Header badge + footer chip per response mode. There is no open-domain /
-  // "Direct LLM" path anymore: a response is a verified RAG answer, a
-  // refusal (no supporting evidence), a fixed greeting, or an error.
+  // "Direct LLM" path: a response is a verified RAG answer, guidance when no
+  // evidence supports an answer, a clarifying question, a deterministic tax
+  // computation (or a request for its inputs), a fixed greeting/chat reply,
+  // or an error.
   const MODE_LABELS = {
-    rag:       { badge: 'Verified RAG Synthesis', chip: 'RAG Processed' },
-    no_answer: { badge: 'No Supported Answer',    chip: 'Refused (no evidence)' },
-    greeting:  { badge: 'Greeting',               chip: 'Fixed Reply' },
-    rejected:  { badge: 'Question Not Processed', chip: 'Rejected (input)' },
-    error:     { badge: 'Error',                  chip: 'Error' },
+    rag:               { badge: 'Verified RAG Synthesis',      chip: 'RAG Processed' },
+    guidance:          { badge: 'Guided Follow-up',            chip: 'No evidence · guidance' },
+    clarify:           { badge: 'Clarifying Question',         chip: 'Needs more detail' },
+    computation:       { badge: 'Deterministic Tax Computation', chip: 'Computed from verified rule' },
+    computation_input: { badge: 'Tax Computation',             chip: 'Collecting inputs' },
+    chat:              { badge: 'Assistant',                   chip: 'Fixed Reply' },
+    no_answer:         { badge: 'No Supported Answer',         chip: 'Refused (no evidence)' },
+    greeting:          { badge: 'Greeting',                    chip: 'Fixed Reply' },
+    rejected:          { badge: 'Question Not Processed',      chip: 'Rejected (input)' },
+    error:             { badge: 'Error',                       chip: 'Error' },
   };
   const modeInfo = MODE_LABELS[msg.mode] || MODE_LABELS.error;
   const modeLabel = modeInfo.badge;

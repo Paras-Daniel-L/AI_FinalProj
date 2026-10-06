@@ -1,0 +1,52 @@
+{
+  "rule_id": "ph-individual-income-tax-8-percent",
+  "tax_type": "income_tax_8_percent",
+  "method": "flat_rate_over_threshold",
+  "jurisdiction": "PH",
+  "document_type": "tax_rate_rule",
+  "computation_related": true,
+  "name": {
+    "english": "8% income tax option for purely self-employed individuals and professionals",
+    "filipino": "8% income tax option para sa purely self-employed at mga propesyonal",
+    "taglish": "8% income tax option para sa purely self-employed at professionals"
+  },
+  "applies_to": "Purely self-employed individuals and/or professionals (no compensation income) whose gross sales/receipts and other non-operating income do not exceed the VAT threshold, and who elected the 8% option for the year.",
+  "inputs": {
+    "tax_year": {"type": "year", "required": true},
+    "gross_sales_receipts": {"type": "amount", "required": true, "min": "0"},
+    "non_operating_income": {"type": "amount", "required": false, "min": "0", "default": "0"},
+    "tax_withheld": {"type": "amount", "required": false, "min": "0"}
+  },
+  "kb_references": [
+    {
+      "title": "BIR_Income_Tax_FAQ",
+      "page": 5,
+      "what": "8% option, purely self-employed: gross sales/receipts + non-operating income = gross taxable income; less P250,000 (Sec. 24(A)(2)(b)) = net taxable income; x 8% = income tax due; less tax withheld (BIR Form 2307) = income tax payable (Question 10, Part B(i))."
+    }
+  ],
+  "versions": [
+    {
+      "version_id": "train-8pct-2018-onwards",
+      "tax_year_from": 2018,
+      "tax_year_to": 2026,
+      "label": {
+        "english": "8% option under the TRAIN Law (tax years 2018 onwards)",
+        "filipino": "8% option sa ilalim ng TRAIN Law (taong 2018 pataas)",
+        "taglish": "8% option under TRAIN Law (tax years 2018 onwards)"
+      },
+      "legal_basis": "Sec. 24(A)(2)(b), NIRC of 1997 as amended by RA No. 10963 (TRAIN Law); VAT threshold of P3,000,000 under Sec. 109(BB) as amended by RA No. 10963",
+      "rate": "0.08",
+      "threshold_deduction": "250000",
+      "eligibility_max_gross": "3000000",
+      "sources": [
+        {"title": "Republic Act No. 10963 (TRAIN Law), Sec. 24(A)(2)(b) and Sec. 109(BB) NIRC as amended", "url": "https://lawphil.net/statutes/repacts/ra2017/ra_10963_2017.html"},
+        {"title": "Senate Tax Study and Research Office, Primer on the TRAIN Law (March 2018)", "url": "https://legacy.senate.gov.ph/publications/STSRO/primer%20on%20TRAIN%20LAW%202018%20as%20of%20march%2013.pdf"}
+      ],
+      "verification": {
+        "status": "verified",
+        "checked_on": "2026-10-06",
+        "notes": "Rate, P250,000 deduction and computation steps also appear in the knowledge base (BIR_Income_Tax_FAQ, Question 10 Part B(i)). The P3,000,000 eligibility ceiling is the VAT threshold in Sec. 109(BB) as amended by RA 10963; it is not stated in the knowledge-base PDFs."
+      }
+    }
+  ]
+}

@@ -103,16 +103,17 @@ def get_year_filter(query: str) -> Optional[str]:
     return year
 
 
+# Non-year corpus folders and how they are shown in the label.
+_NAMED_CATEGORIES = {"faq": "FAQ", "reference": "Reference Notes"}
+
+
 def _describe(categories: List[str]) -> str:
-    if categories == ["faq"]:
-        return "FAQ"
-    years = [c for c in categories if c != "faq"]
+    years = [c for c in categories if c not in _NAMED_CATEGORIES]
     parts = []
     if years:
         noun = "Year" if len(years) == 1 else "Years"
         parts.append(f"BIR Tax Query (Source {noun}: {', '.join(years)})")
-    if "faq" in categories:
-        parts.append("FAQ")
+    parts += [label for key, label in _NAMED_CATEGORIES.items() if key in categories]
     return " + ".join(parts)
 
 
