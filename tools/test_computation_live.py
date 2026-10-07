@@ -25,6 +25,10 @@ Output
 A case passes when the final outcome is one of the expected outcomes AND every
 expected peso figure appears in the bot's reply. Figures are compared as numbers,
 so "₱20,415", "₱20,415.00" and "20415" all match 20,415.
+
+No rounding (v1.5.2): the oracle computes every figure exactly, like the bot.
+A figure such as ₱868.74975 must appear with all its digits; a rounded
+₱868.75 in the reply would fail the case.
 """
 from __future__ import annotations
 
@@ -35,7 +39,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
-from decimal import Decimal as D, ROUND_HALF_UP
+from decimal import Decimal as D
 
 # ---------------------------------------------------------------------------
 # Independent reference calculator ("oracle")
@@ -43,11 +47,6 @@ from decimal import Decimal as D, ROUND_HALF_UP
 # Sec. 32(B)(7)(e) ₱90,000 benefits cap; Sec. 32(B)(7)(f) contributions excluded;
 # SSS Circular 2024-006; RA 11223 / PhilHealth Advisories 2025-0002, 2026-0042; HDMF Circ. 460.
 # ---------------------------------------------------------------------------
-CENT = D("0.01")
-
-
-def _r(x: D) -> D:
-    return x.quantize(CENT, ROUND_HALF_UP)
 
 
 class Oracle:
@@ -65,14 +64,14 @@ class Oracle:
         for over, base, rate in table:
             if ti > over:
                 tax = D(base) + (ti - over) * D(rate)
-        return _r(tax)
+        return tax
 
     @staticmethod
     def eight_percent(gross_sales, non_operating=0) -> D | None:
         if D(str(gross_sales)) > 3000000:
             return None  # not eligible (above VAT threshold)
         base = D(str(gross_sales)) + D(str(non_operating)) - 250000
-        return _r(max(D(0), base * D("0.08")))
+        return max(D(0), base * D("0.08"))
 
     @staticmethod
     def sss_msc(monthly: D) -> D:
@@ -88,7 +87,7 @@ class Oracle:
         sss = cls.sss_msc(m) * D("0.05")
         philhealth = min(max(m, D(10000)), D(100000)) * D("0.025")
         pagibig = min(m, D(10000)) * D("0.02")
-        return _r(sss), _r(philhealth), _r(pagibig)
+        return sss, philhealth, pagibig
 
     @classmethod
     def employee(cls, pay, period="monthly", year=2025, benefits=0, withheld=None) -> dict:
@@ -97,7 +96,7 @@ class Oracle:
         contrib = (sss + ph + pi) * 12
         taxable = annual - contrib + max(D(0), D(str(benefits)) - 90000)
         tax = cls.graduated(taxable, year)
-        out = {"annual": _r(annual), "contributions": _r(contrib), "taxable": _r(taxable), "tax": tax}
+        out = {"annual": annual, "contributions": contrib, "taxable": taxable, "tax": tax}
         if withheld is not None:
             out["balance"] = abs(tax - D(str(withheld)))  # payable or refundable
         return out
@@ -221,6 +220,9 @@ CASES = [
     dict(id="C12", group="Employee", desc="₱35,000/month in 2026 (2026 contribution rules)",
          msg="Compute my income tax for 2026. I am an employee and my monthly salary is ₱35,000.",
          outcomes=DONE, numbers=emp(35000, year=2026)),
+    dict(id="C14", group="Employee", desc="₱34,749.99/month (PhilHealth ₱868.74975, not rounded)",
+         msg="Compute my income tax for 2025. I am an employee and my monthly salary is ₱34,749.99.",
+         outcomes=DONE, numbers=emp(D("34749.99"))),
     dict(id="C13", group="Employee", desc="Filipino phrasing, same as C1",
          msg="Pakikalkula ang income tax ko para sa 2025. Empleyado ako at ang buwanang sahod ko ay ₱35,000.",
          outcomes=DONE, numbers=emp(35000)),

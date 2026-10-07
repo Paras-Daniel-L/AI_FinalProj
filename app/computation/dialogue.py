@@ -36,7 +36,7 @@ from typing import Callable, Dict, List, Optional
 
 from ..schemas import ComputationState
 from . import messages as M
-from .calculator import NotEligible, compute, compute_compensation, money
+from .calculator import NotEligible, centavos, compute, compute_compensation
 from .extract import Extraction, extract
 from .rules import Registry, get_registry
 
@@ -186,7 +186,11 @@ def handle(
     for a in ex.amounts:
         period = a.period or (ex.period if len(ex.amounts) == 1 else None)
         slot, is_assumed = _slot_for(a.role, tax_type, st.awaiting)
-        value = money(a.value)
+        # Amounts are used exactly as typed. One finer than a centavo
+        # (800,000.555) is asked about again, never rounded to fit.
+        value = centavos(a.value)
+        if value is None:
+            return reply(M.t("sub_centavo_amount", lang, raw=a.raw), OUT_INVALID)
         if tax_type == COMPENSATION and slot == "gross_pay":
             if period == "daily":
                 return reply(M.t("daily_pay", lang), OUT_NEEDS_INPUT)
@@ -195,7 +199,7 @@ def handle(
         elif tax_type == COMPENSATION and slot == "contributions" and period in PERIODIC:
             if period == "daily":
                 return reply(M.t("daily_pay", lang), OUT_NEEDS_INPUT)
-            value = money(a.value * {"monthly": 12, "semi_monthly": 24, "weekly": 52}[period])
+            value = value * {"monthly": 12, "semi_monthly": 24, "weekly": 52}[period]   # exact, no rounding
         elif tax_type != COMPENSATION and period in PERIODIC and slot in ("taxable_income", "gross_sales_receipts"):
             return reply(M.t("monthly_amount", lang, amount=M.peso(a.value)), OUT_INVALID)
         # Correcting a value the user already stated explicitly ("actually it's
@@ -348,6 +352,8 @@ def handle(
         if "assumed_gross" in notes:
             note_lines.append(M.t("note_gross_assumed", lang, amount=M.peso(inputs["gross_sales_receipts"])))
         note_lines.append(M.t("note_8pct_scope", lang))
+    if result.per_period and not all(result.per_period["exact"].values()):
+        note_lines.append(M.t("note_repeating", lang, periods=result.per_period["periods"]))
     if tax_type == COMPENSATION:
         if "benefits" not in values:
             note_lines.append(M.t("note_benefits_assumed", lang, cap=M.peso(version.params["benefits_exclusion_cap"])))

@@ -229,7 +229,7 @@ def test_demo_page_and_config_are_served(client):
     cfg = client.get("/demo/api/config").json()
     assert set(cfg["systems"]) == {"sagot", "revie"}                     # v1.5: Sagot AI vs REVIE only
     assert cfg["compare_modes"] == {"none": ["sagot"], "revie": ["sagot", "revie"]}
-    assert cfg["version"] == "v1.5.1"
+    assert cfg["version"] == "v1.5.2"
     for gone in ("c0", "c1", "c2", "all"):                               # removed comparison modes
         assert client.post("/eval/api/run/demo", json={"query": "q?", "compare": gone}).status_code == 422
     assert set(cfg["metrics"]) == {"groundedness", "context_relevance", "answer_relevance"}

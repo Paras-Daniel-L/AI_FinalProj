@@ -200,8 +200,8 @@ def test_s7_complete_computation_query(world):
     r = ask(world, "My taxable income is ₱800,000 for 2025. How much income tax do I need to pay?")
     assert r.intent == "TAX_COMPUTATION"
     assert r.mode == "computation" and r.outcome == "computation_done"
-    assert "**Estimated income tax due for 2025: ₱102,500**" in r.answer
-    assert "₱22,500 + ₱80,000 = **₱102,500**" in r.answer
+    assert "**Income tax due for 2025: ₱102,500.00**" in r.answer
+    assert "₱22,500 + ₱80,000.00 = **₱102,500.00**" in r.answer
     assert any("RA No. 10963" in s for s in r.sources)
     assert any(s.startswith("Knowledge base: BIR_Income_Tax_FAQ, p.5") for s in r.sources)
     assert world.rag_calls == 0 and world.retrieve_calls == 0   # no LLM involved in the number
@@ -211,7 +211,7 @@ def test_s8_missing_information_asks_follow_up(world):
     r = ask(world, "Calculate my income tax.")
     assert r.outcome == "computation_needs_input" and r.mode == "computation_input"
     assert "**Tax year**" in r.answer and "**Annual taxable income**" in r.answer
-    assert "Estimated" not in r.answer
+    assert "**Calculation**" not in r.answer
     assert r.computation is not None and r.computation.awaiting == ["tax_year", "taxable_income"]
 
 
@@ -229,7 +229,7 @@ def test_s10_changed_value_replaces_old_one(world):
                       "Actually, it's 850,000.")
     assert r4.outcome == "computation_done"
     assert "₱800,000 → **₱850,000**" in r4.answer
-    assert "**Estimated income tax due for 2025: ₱115,000**" in r4.answer
+    assert "**Income tax due for 2025: ₱115,000.00**" in r4.answer
     assert r4.computation.values["taxable_income"] == "850000.00"
 
 
@@ -243,7 +243,7 @@ def test_s11_year_selects_its_own_rule(world):
 def test_s12_unsupported_year_is_not_computed_with_another_years_rule(world):
     r = ask(world, "Compute my income tax for 2015, taxable income 800,000")
     assert r.outcome == "computation_unsupported_year"
-    assert "Estimated" not in r.answer and "₱102,500" not in r.answer and "₱130,000" not in r.answer
+    assert "**Calculation**" not in r.answer and "₱102,500" not in r.answer and "₱130,000" not in r.answer
     assert "2018 to 2026" in r.answer
     assert "tax_year" not in r.computation.values and r.computation.awaiting == ["tax_year"]
     r2 = ask(world, "2024", r.computation)        # the user picks a supported year; income is kept
@@ -254,14 +254,14 @@ def test_s13_missing_rule_is_not_fabricated(world):
     r = ask(world, "Compute my VAT for 2025, my sales are 2,000,000")
     assert r.outcome == "computation_no_rule"
     assert "I can't compute **VAT** yet" in r.answer
-    assert "12%" not in r.answer and "Estimated" not in r.answer
+    assert "12%" not in r.answer and "**Calculation**" not in r.answer
     assert r.computation is None
 
 
 def test_s13b_rule_file_missing_means_no_computation(tmp_path):
     empty = load_registry(tmp_path)
     t = dialogue.handle("Compute my income tax for 2025, taxable income 800,000", "english", registry=empty)
-    assert t.outcome == "computation_no_rule" and "Estimated" not in t.answer
+    assert t.outcome == "computation_no_rule" and "**Calculation**" not in t.answer
 
 
 def test_s14_invalid_numbers_are_rejected(world):
@@ -290,14 +290,14 @@ def test_s15b_filipino_multi_turn_keeps_filipino_for_bare_numbers(world):
     r1, r2 = converse(world, "Magkano tax ko kung 800k ang taxable income ko?", "2025")
     assert r1.language == "filipino" and "Taon ng buwis" in r1.answer
     assert r2.language == "filipino"                     # "2025" alone has no language markers
-    assert "Tinatayang income tax due para sa 2025: ₱102,500" in r2.answer
+    assert "Income tax due para sa 2025: ₱102,500.00" in r2.answer
 
 
 def test_s16_english_computation_in_english(world):
     r = ask(world, "Calculate my income tax for 2023: taxable income 1,200,000, my employer withheld 200,000")
     assert r.language == "english"
-    assert "Excess over ₱800,000: ₱1,200,000 − ₱800,000 = ₱400,000" in r.answer
-    assert "₱202,500 − ₱200,000 = **₱2,500 still payable**" in r.answer
+    assert "Excess over ₱800,000: ₱1,200,000.00 − ₱800,000 = ₱400,000.00" in r.answer
+    assert "₱202,500.00 − ₱200,000.00 = **₱2,500.00 still payable**" in r.answer
 
 
 def test_eight_percent_option_and_eligibility(world):
@@ -424,7 +424,7 @@ def test_unverified_rule_is_not_used(tmp_path):
     reg = load_registry(tmp_path)
     assert reg.lookup("income_tax_graduated", 2025)[2] == "unverified"
     t = dialogue.handle("Compute my income tax for 2025, taxable income 800,000", "english", registry=reg)
-    assert t.outcome == "computation_rule_unverified" and "Estimated" not in t.answer
+    assert t.outcome == "computation_rule_unverified" and "**Calculation**" not in t.answer
 
 
 @pytest.mark.parametrize("year,income,expected", [
@@ -436,7 +436,7 @@ def test_unverified_rule_is_not_used(tmp_path):
 def test_graduated_tax_values(year, income, expected):
     rule, version, status = get_registry().lookup("income_tax_graduated", year)
     assert status == "ok"
-    assert str(compute(rule, version, year, {"taxable_income": Decimal(income)}).tax_due) == expected
+    assert compute(rule, version, year, {"taxable_income": Decimal(income)}).tax_due == Decimal(expected)
 
 
 def test_registry_never_borrows_a_neighbouring_year():
@@ -472,11 +472,11 @@ def test_employee_salary_matches_published_example(world):
     # and ₱30,473.75 take-home. Same result from the verified rule files.
     r = ask(world, "My salary is ₱35,000 a month. How much is my income tax for 2025?")
     assert r.outcome == "computation_done" and r.computation.tax_type == "income_tax_compensation"
-    assert "₱20,415 a year (about ₱1,701.25 per month)" in r.answer
-    assert "SSS 5% × ₱35,000 salary credit = ₱1,750" in r.answer
-    assert "PhilHealth 2.5% × ₱35,000 = ₱875" in r.answer
-    assert "Pag-IBIG 2% × ₱10,000 = ₱200" in r.answer
-    assert "₱420,000 − ₱33,900 = **₱386,100**" in r.answer
+    assert "₱20,415.00 a year (₱1,701.25 per month)" in r.answer
+    assert "SSS 5% × ₱35,000 salary credit = ₱1,750.00" in r.answer
+    assert "PhilHealth 2.5% × ₱35,000.00 = ₱875.00" in r.answer
+    assert "Pag-IBIG 2% × ₱10,000.00 = ₱200.00" in r.answer
+    assert "₱420,000.00 − ₱33,900.00 = **₱386,100.00**" in r.answer
     assert "**₱30,473.75**" in r.answer
     assert any("Circular No. 2024-006" in s for s in r.sources)
     assert any("PA2026-0042" in s for s in r.sources)
@@ -493,8 +493,8 @@ def test_employee_monthly_income_is_salary_not_an_error(world):
 def test_employee_benefits_above_cap_are_added(world):
     r1, r2 = converse(world, "Magkano ang tax ko? Sahod ko 60k kada buwan para sa 2026", "13th month ko ay 120,000")
     assert r1.language == "filipino" and "₱78,220" in r1.answer
-    assert "libre sa buwis ang unang ₱90,000, kaya **₱30,000** ang taxable" in r2.answer
-    assert "₱720,000 − ₱41,400 + ₱30,000 = **₱708,600**" in r2.answer
+    assert "libre sa buwis ang unang ₱90,000, kaya **₱30,000.00** ang taxable" in r2.answer
+    assert "₱720,000.00 − ₱41,400.00 + ₱30,000.00 = **₱708,600.00**" in r2.answer
     assert "₱84,220" in r2.answer
 
 
@@ -504,31 +504,31 @@ def test_employee_year_without_contribution_table_asks_for_contributions(world):
     assert "monthly**, **semi-monthly" in r2.answer
     assert r3.outcome == "computation_needs_input" and "**2025 to 2026**" in r3.answer
     assert r4.outcome == "computation_done"
-    assert "Mandatory contributions you gave (for the year): **₱42,000**" in r4.answer   # 3,500 × 12
+    assert "Mandatory contributions you gave (for the year): **₱42,000.00**" in r4.answer   # 3,500 × 12
     assert "₱54,100" in r4.answer
 
 
 def test_employee_manual_contributions_override_the_schedule(world):
     *_, r = converse(world, "My salary is 35,000 a month, compute my tax for 2025", "my contributions are 30,000 for the year")
-    assert "Mandatory contributions you gave (for the year): **₱30,000**" in r.answer
-    assert "₱420,000 − ₱30,000 = **₱390,000**" in r.answer
+    assert "Mandatory contributions you gave (for the year): **₱30,000.00**" in r.answer
+    assert "₱420,000.00 − ₱30,000.00 = **₱390,000.00**" in r.answer
 
 
 def test_employee_semi_monthly_and_annual_pay(world):
     r = ask(world, "semi-monthly pay of 25,000, tax for 2025?")
-    assert "₱25,000 × 24 = ₱600,000" in r.answer and "₱54,820" in r.answer
+    assert "₱25,000.00 × 24 = ₱600,000.00" in r.answer and "₱54,820" in r.answer
     r = ask(world, "My gross salary is 900,000 a year for 2025, compute my tax")
     assert "₱116,025" in r.answer and "×" not in r.answer.split("**Calculation**")[1].split("\n")[1][:30]
 
 
 def test_employee_daily_pay_is_not_guessed(world):
     r = ask(world, "My salary is 1,000 a day, compute my tax for 2025")
-    assert r.outcome == "computation_needs_input" and "daily pay" in r.answer and "Estimated" not in r.answer
+    assert r.outcome == "computation_needs_input" and "daily pay" in r.answer and "**Calculation**" not in r.answer
 
 
 def test_minimum_wage_earner_is_not_computed(world):
     r = ask(world, "I'm a minimum wage earner, compute my tax for 2025")
-    assert r.outcome == "computation_no_rule" and "Estimated" not in r.answer
+    assert r.outcome == "computation_no_rule" and "**Calculation**" not in r.answer
 
 
 def test_taxable_income_still_uses_the_graduated_path(world):
@@ -536,20 +536,22 @@ def test_taxable_income_still_uses_the_graduated_path(world):
     assert r.computation.tax_type == "income_tax_graduated" and "₱102,500" in r.answer
 
 
+# Exact values, no rounding (v1.5.2): 2% × ₱5,249.99 is ₱104.9998 and 2.5% ×
+# ₱34,749.99 is ₱868.74975 (they were rounded to ₱105.00 and ₱868.75 before).
 @pytest.mark.parametrize("monthly,msc,sss,ph,pi", [
-    ("5249.99", "5000", "250.00", "250.00", "105.00"),      # below the lowest bracket edge; PhilHealth floor
-    ("5250", "5500", "275.00", "250.00", "105.00"),
-    ("20000", "20000", "1000.00", "500.00", "200.00"),
-    ("34749.99", "34500", "1725.00", "868.75", "200.00"),
-    ("34750", "35000", "1750.00", "868.75", "200.00"),
-    ("150000", "35000", "1750.00", "2500.00", "200.00"),    # SSS and PhilHealth ceilings
+    ("5249.99", "5000", "250", "250", "104.9998"),          # below the lowest bracket edge; PhilHealth floor
+    ("5250", "5500", "275", "250", "105"),
+    ("20000", "20000", "1000", "500", "200"),
+    ("34749.99", "34500", "1725", "868.74975", "200"),
+    ("34750", "35000", "1750", "868.75", "200"),
+    ("150000", "35000", "1750", "2500", "200"),             # SSS and PhilHealth ceilings
 ])
 def test_contribution_schedule_boundaries(monthly, msc, sss, ph, pi):
     from app.computation.calculator import compute_contributions
     _rule, version, status = get_registry().lookup("employee_contributions", 2025)
     assert status == "ok"
     c = compute_contributions(version, Decimal(monthly))
-    assert (str(c.sss_msc), str(c.sss), str(c.philhealth), str(c.pagibig)) == (msc, sss, ph, pi)
+    assert (c.sss_msc, c.sss, c.philhealth, c.pagibig) == tuple(Decimal(x) for x in (msc, sss, ph, pi))
 
 
 def test_no_contribution_schedule_before_2025():

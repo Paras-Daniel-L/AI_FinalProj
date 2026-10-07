@@ -49,8 +49,13 @@ def worked_example():
 
 
 def p(amount) -> str:
+    """Peso figure with every digit (no rounding): P20,415 / P1,701.25 / P868.74975."""
     d = Decimal(str(amount))
-    return f"P{int(d):,}" if d == d.to_integral_value() else f"P{d:,.2f}"
+    whole, _, frac = format(d, "f").partition(".")
+    frac = frac.rstrip("0")
+    if frac:
+        frac = frac.ljust(2, "0")
+    return f"P{int(whole):,}" + (f".{frac}" if frac else "")
 
 
 def entries():

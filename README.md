@@ -1,6 +1,6 @@
 # Sagot AI: Philippine BIR tax Q&A that refuses to make things up
 
-**Version 1.5.1** (see `VERSIONS.md` for the history).
+**Version 1.5.2** (see `VERSIONS.md` for the history).
 
 Sagot AI answers questions about Philippine BIR tax issuances (RRs, RMCs, RMOs, RAOs, rulings, FAQs) using only a fixed set of official PDFs. Every answer is written by one model (DeepSeek) and then checked by a second model from a different company (Qwen) against the exact excerpts the first one was given. If the check fails three times, Sagot AI gives guidance instead of an answer. Tax computations never go through a model: the numbers come from verified rule files and plain code.
 
@@ -149,7 +149,7 @@ Why two models from different companies: a model checking its own work tends to 
 | File | Role |
 |---|---|
 | `rules.py` | Loads and validates `tax_rules/*.json`. Rejects broken tables. `python -m app.computation.rules` prints them. |
-| `calculator.py` | Decimal arithmetic and the step-by-step breakdown. |
+| `calculator.py` | Exact Decimal arithmetic (nothing is rounded) and the step-by-step breakdown. |
 | `extract.py` | Reads amounts, years and pay periods from English, Filipino and Taglish. |
 | `dialogue.py` | Asks for missing inputs over several turns, and validates them. |
 | `messages.py` | Every sentence the calculator says, in three languages. |
@@ -199,8 +199,8 @@ Supported: graduated income tax (2018–2022 and 2023–2026 tables), the 8% opt
 
 | File | Role |
 |---|---|
-| `tests/test_*.py` | 154 offline tests (no keys, no network): `python -m pytest -q` (install `pytest` first). |
-| `tools/test_computation_live.py` | 38 computation questions against the running server, checked by an independent calculator. |
+| `tests/test_*.py` | 165 offline tests (no keys, no network): `python -m pytest -q` (install `pytest` first). |
+| `tools/test_computation_live.py` | 39 computation questions against the running server, checked by an independent exact calculator. |
 | `tools/build_reference_note.py` | Builds the reference PDF for the knowledge base (needs `pip install reportlab`). |
 | `check_scans.py` | Lists PDFs with scanned pages. |
 | `check_ingestion_coverage.py` | Compares the PDFs on disk with what's in the index. |
@@ -394,4 +394,5 @@ curl.exe -X POST http://localhost:8000/upload -F "file=@C:\path\RMC No. 12-2026.
 - **History is off.** Each question stands alone. This keeps the cache useful and stops the generator from reusing facts the verifier never checked.
 - **The year filter needs exactly one year.** Two years or a range searches everything, so amendments aren't missed.
 - **The cache is exact-match.** "RMC 24-2026" and "RMC 25-2026" never share an answer. Only verified answers are cached.
+- **Tax figures are never rounded.** Every amount in a computation is the exact result (₱3,765.00, ₱868.74975). Only a per-period figure that repeats forever (an annual amount ÷ 52, say) is cut off at 8 decimals and marked "…", and the reply says so. Amounts finer than a centavo are asked again.
 - **Rates live in `tax_rules/`, not in a model.** A year outside a rule's verified range is refused. To support 2027, check the law first, then extend `tax_year_to`.

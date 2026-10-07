@@ -7,18 +7,51 @@ reply can never contain a rate, threshold or figure that isn't in a rule file.
 
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 from typing import Dict, List, Optional
 
 LANGS = ("english", "filipino", "taglish")
 
+# Decimal places shown for a repeating quotient (e.g. ₱1,000 ÷ 12), cut off
+# without rounding and followed by "…". See calculator.divide().
+REPEATING_SHOWN = 8
+
+
+def _digits(d: Decimal, min_decimals: int, strip: bool = True) -> str:
+    """Every digit of `d` (no rounding), thousands separators, at least
+    `min_decimals` decimals. format(d, "f") writes the exact value."""
+    sign = "-" if d < 0 else ""
+    whole, _, frac = format(abs(d), "f").partition(".")
+    if strip:
+        frac = frac.rstrip("0")
+    frac = frac.ljust(min_decimals, "0")
+    return f"{sign}{int(whole):,}" + (f".{frac}" if frac else "")
+
 
 def peso(value) -> str:
-    """₱800,000 / ₱1,234.50 (centavos only when there are any)."""
+    """A figure from the law or a rule file, or an amount the user typed, as
+    written: ₱400,000 / ₱1,234.50. Never rounded: every decimal is shown."""
+    return "₱" + _digits(Decimal(str(value)), 0)
+
+
+def amount(value, exact: bool = True) -> str:
+    """
+    A COMPUTED figure, never rounded: always shown to at least the centavo
+    and with every further digit the arithmetic produced (₱3,765.00,
+    ₱868.74975). exact=False marks a repeating decimal from dividing an annual
+    figure by the pay periods: its first REPEATING_SHOWN decimals are shown,
+    cut off (not rounded), then "…" (₱72.40384615…).
+    """
     d = Decimal(str(value))
-    if d == d.to_integral_value():
-        return f"₱{int(d):,}"
-    return f"₱{d:,.2f}"
+    if exact:
+        return "₱" + _digits(d, 2)
+    d = d.quantize(Decimal(1).scaleb(-REPEATING_SHOWN), rounding=ROUND_DOWN)
+    return "₱" + _digits(d, REPEATING_SHOWN, strip=False) + "…"
+
+
+def _ex(step: dict, key: str) -> bool:
+    """Whether a step's value is exact (False only for a repeating decimal)."""
+    return (step.get("exact") or {}).get(key, True)
 
 
 def pct(rate) -> str:
@@ -153,6 +186,11 @@ _T: Dict[str, Dict[str, str]] = {
         "filipino": "Hindi ko mabasa ang **{raw}** bilang tamang halaga. Pakisulat ito tulad ng **800,000**, **800000** o **800k** (walang negatibong halaga).",
         "taglish": "Hindi ko ma-read ang **{raw}** as a valid na amount. Pakitype like **800,000**, **800000** o **800k** (walang negative values).",
     },
+    "sub_centavo_amount": {
+        "english": "**{raw}** has digits smaller than a centavo. Peso amounts go down to the centavo (2 decimal places), and I won't round your figure. What is the exact amount (e.g. **800,000.55**)?",
+        "filipino": "May decimal na mas maliit sa sentimo ang **{raw}**. Hanggang sentimo (2 decimal places) lang ang halaga ng piso, at hindi ko ira-round ang halagang ibinigay mo. Ano ang eksaktong halaga (hal. **800,000.55**)?",
+        "taglish": "May digits na mas maliit sa centavo ang **{raw}**. Hanggang centavo (2 decimal places) lang ang peso amounts, at hindi ko ira-round ang figure mo. Ano ang exact na amount (e.g. **800,000.55**)?",
+    },
     "need_number": {
         "english": "I need a number for your **{field}**, e.g. **{example}**. What is it?",
         "filipino": "Kailangan ko ng numero para sa iyong **{field}**, hal. **{example}**. Magkano ito?",
@@ -224,9 +262,9 @@ _T: Dict[str, Dict[str, str]] = {
     },
     # ── Result ──────────────────────────────────────────────────────
     "result_title": {
-        "english": "**Estimated income tax due for {year}: {tax_due}**",
-        "filipino": "**Tinatayang income tax due para sa {year}: {tax_due}**",
-        "taglish": "**Estimated income tax due for {year}: {tax_due}**",
+        "english": "**Income tax due for {year}: {tax_due}**",
+        "filipino": "**Income tax due para sa {year}: {tax_due}**",
+        "taglish": "**Income tax due for {year}: {tax_due}**",
     },
     "label_rule": {"english": "Rule applied", "filipino": "Rule na ginamit", "taglish": "Rule na ginamit"},
     "label_basis": {"english": "Legal basis", "filipino": "Batayang legal", "taglish": "Legal basis"},
@@ -245,9 +283,9 @@ _T: Dict[str, Dict[str, str]] = {
         "taglish": "not over {not_over}: 0%",
     },
     "step_zero": {
-        "english": "{income} is not over {not_over}, so the rate is 0% and the tax due is **₱0**.",
-        "filipino": "Ang {income} ay hindi lumalampas sa {not_over}, kaya 0% ang rate at **₱0** ang tax due.",
-        "taglish": "Ang {income} ay hindi lalampas sa {not_over}, kaya 0% ang rate at **₱0** ang tax due.",
+        "english": "{income} is not over {not_over}, so the rate is 0% and the tax due is **₱0.00**.",
+        "filipino": "Ang {income} ay hindi lumalampas sa {not_over}, kaya 0% ang rate at **₱0.00** ang tax due.",
+        "taglish": "Ang {income} ay hindi lalampas sa {not_over}, kaya 0% ang rate at **₱0.00** ang tax due.",
     },
     "step_excess": {
         "english": "Excess over {over}: {income} − {over} = {excess}",
@@ -290,9 +328,9 @@ _T: Dict[str, Dict[str, str]] = {
         "taglish": "Less tax na na-withhold na: {tax_due} − {withheld} = **{excess} na sobra ang na-withhold** (possibly refundable o creditable; tanungin mo ako kung paano ito tina-treat)",
     },
     "step_withheld_zero": {
-        "english": "Less tax already withheld: {tax_due} − {withheld} = **₱0 still payable**",
-        "filipino": "Bawas ang buwis na na-withhold na: {tax_due} − {withheld} = **₱0 na babayaran pa**",
-        "taglish": "Less tax na na-withhold na: {tax_due} − {withheld} = **₱0 na babayaran pa**",
+        "english": "Less tax already withheld: {tax_due} − {withheld} = **₱0.00 still payable**",
+        "filipino": "Bawas ang buwis na na-withhold na: {tax_due} − {withheld} = **₱0.00 na babayaran pa**",
+        "taglish": "Less tax na na-withhold na: {tax_due} − {withheld} = **₱0.00 na babayaran pa**",
     },
     "note_income_assumed": {
         "english": "I treated {amount} as your **annual taxable income**, meaning after deductions and non-taxable items (such as 13th-month pay and other benefits up to ₱90,000, and GSIS, SSS, Medicare and other contributions). If it's your gross pay, tell me your taxable income instead.",
@@ -345,9 +383,9 @@ _T: Dict[str, Dict[str, str]] = {
         "taglish": "Sa ganitong pay level, hindi ko ma-compute ang contributions from my schedules. Magkano ang **total SSS, PhilHealth at Pag-IBIG contributions mo for the year**? (Check your payslips.)",
     },
     "result_title_period": {
-        "english": "**Estimated income tax for {year}: {tax_due} a year (about {per} per {period})**",
-        "filipino": "**Tinatayang income tax para sa {year}: {tax_due} sa isang taon (mga {per} kada {period})**",
-        "taglish": "**Estimated income tax for {year}: {tax_due} a year (about {per} per {period})**",
+        "english": "**Income tax for {year}: {tax_due} a year ({per} per {period})**",
+        "filipino": "**Income tax para sa {year}: {tax_due} sa isang taon ({per} kada {period})**",
+        "taglish": "**Income tax for {year}: {tax_due} a year ({per} per {period})**",
     },
     "label_table": {"english": "Tax table", "filipino": "Tax table", "taglish": "Tax table"},
     "label_gross_pay": {"english": "Gross pay", "filipino": "Gross na sahod", "taglish": "Gross pay"},
@@ -384,9 +422,14 @@ _T: Dict[str, Dict[str, str]] = {
         "taglish": "Taxable compensation: {annual} − {contributions}{plus_benefits} = **{taxable}**",
     },
     "step_per_period": {
-        "english": "Per {period}: tax {tax_due} ÷ {periods} = {tax}; take-home ≈ {gross} − {contributions} contributions − {tax} tax = **{take_home}**",
-        "filipino": "Kada {period}: buwis {tax_due} ÷ {periods} = {tax}; take-home ≈ {gross} − {contributions} kontribusyon − {tax} buwis = **{take_home}**",
-        "taglish": "Per {period}: tax {tax_due} ÷ {periods} = {tax}; take-home ≈ {gross} − {contributions} contributions − {tax} tax = **{take_home}**",
+        "english": "Per {period}: tax {tax_due} ÷ {periods} = {tax}; take-home = {gross} − {contributions} contributions − {tax} tax = **{take_home}**",
+        "filipino": "Kada {period}: buwis {tax_due} ÷ {periods} = {tax}; take-home = {gross} − {contributions} kontribusyon − {tax} buwis = **{take_home}**",
+        "taglish": "Per {period}: tax {tax_due} ÷ {periods} = {tax}; take-home = {gross} − {contributions} contributions − {tax} tax = **{take_home}**",
+    },
+    "note_repeating": {
+        "english": "Dividing by {periods} doesn't come out even here, so a figure marked \"…\" is a repeating decimal: it is shown to 8 decimal places and cut off there, not rounded. The annual figures are exact.",
+        "filipino": "Hindi pantay ang hatian sa {periods} dito, kaya ang halagang may \"…\" ay umuulit na decimal: ipinapakita ito hanggang 8 decimal places at pinuputol doon, hindi ira-round. Eksakto ang mga taunang halaga.",
+        "taglish": "Hindi pantay ang division sa {periods} dito, kaya ang figure na may \"…\" ay repeating decimal: naka-show ito up to 8 decimal places at pinutol doon, hindi ni-round. Exact ang annual figures.",
     },
     "note_benefits_assumed": {
         "english": "I assumed your 13th-month pay and other benefits for the year total {cap} or less, which is tax-exempt. If they're higher, tell me the total (e.g. \"13th month 120,000\") and I'll recompute.",
@@ -409,9 +452,9 @@ _T: Dict[str, Dict[str, str]] = {
         "taglish": "Para lang ito sa purely compensation income. Iba ang computation for minimum wage earners at sa may business o freelance income din.",
     },
     "disclaimer": {
-        "english": "_This is an estimate based only on the rule shown above. It doesn't cover penalties, other income types or special cases, so check your actual return or ask a BIR officer or tax professional before filing._",
-        "filipino": "_Tantya lang ito batay sa rule na nakasaad sa itaas. Hindi kasama ang penalties, ibang uri ng kita o mga espesyal na kaso, kaya i-check ang iyong aktwal na return o magtanong sa BIR o sa isang tax professional bago mag-file._",
-        "taglish": "_Estimate lang ito based sa rule sa itaas. Hindi kasama ang penalties, other income types o special cases, kaya i-check ang actual return mo o magtanong sa BIR o tax professional bago mag-file._",
+        "english": "_Every figure above is computed exactly from the amounts you gave and the rule shown above, with no rounding. It doesn't cover penalties, other income types or special cases, so check your actual return or ask a BIR officer or tax professional before filing._",
+        "filipino": "_Eksaktong kinompyut ang bawat halaga sa itaas mula sa mga halagang ibinigay mo at sa rule na nakasaad sa itaas, nang walang pag-round. Hindi kasama ang penalties, ibang uri ng kita o mga espesyal na kaso, kaya i-check ang iyong aktwal na return o magtanong sa BIR o sa isang tax professional bago mag-file._",
+        "taglish": "_Exact na computed ang bawat figure sa itaas from the amounts na binigay mo at sa rule sa itaas, walang rounding. Hindi kasama ang penalties, other income types o special cases, kaya i-check ang actual return mo o magtanong sa BIR o tax professional bago mag-file._",
     },
     "can_update": {
         "english": "You can change any value (e.g. \"actually it's ₱850,000\" or \"use 2024\") and I'll recompute.",
@@ -474,25 +517,27 @@ def render_result(result, rule, version, lang: str, notes: List[str], changes: L
     if changes:
         out.append("")
     if result.per_period:
-        out.append(t("result_title_period", lang, year=result.tax_year, tax_due=peso(result.tax_due),
-                     per=peso(result.per_period["tax"]), period=period_name(result.per_period["period"], lang)))
+        pp = result.per_period
+        out.append(t("result_title_period", lang, year=result.tax_year, tax_due=amount(result.tax_due),
+                     per=amount(pp["tax"], (pp.get("exact") or {}).get("tax", True)),
+                     period=period_name(pp["period"], lang)))
     else:
-        out.append(t("result_title", lang, year=result.tax_year, tax_due=peso(result.tax_due)))
+        out.append(t("result_title", lang, year=result.tax_year, tax_due=amount(result.tax_due)))
     out.append("")
     inputs = result.inputs
     out.append(f"- {field_name('tax_year', lang)}: {result.tax_year}")
     if "gross_pay" in inputs:
         per = f" {t('per', lang)} {period_name(pay_period, lang)}" if pay_period and pay_period != "annual" else ""
-        out.append(f"- {t('label_gross_pay', lang)}: {peso(inputs['gross_pay'])}{per}")
+        out.append(f"- {t('label_gross_pay', lang)}: {amount(inputs['gross_pay'])}{per}")
         if inputs.get("benefits"):
-            out.append(f"- {field_name('benefits', lang)}: {peso(inputs['benefits'])}")
-        out.append(f"- {field_name('taxable_compensation', lang)}: {peso(inputs['taxable_income'])}")
+            out.append(f"- {field_name('benefits', lang)}: {amount(inputs['benefits'])}")
+        out.append(f"- {field_name('taxable_compensation', lang)}: {amount(inputs['taxable_income'])}")
     else:
         for key in ("taxable_income", "gross_sales_receipts", "non_operating_income"):
             if key in inputs and not (key == "non_operating_income" and inputs[key] == 0):
-                out.append(f"- {field_name(key, lang)}: {peso(inputs[key])}")
+                out.append(f"- {field_name(key, lang)}: {amount(inputs[key])}")
     if result.tax_withheld is not None:
-        out.append(f"- {field_name('tax_withheld', lang)}: {peso(result.tax_withheld)}")
+        out.append(f"- {field_name('tax_withheld', lang)}: {amount(result.tax_withheld)}")
     out.append(f"- {t('label_rule', lang)}: {rule.name_for(lang)} ({version.label_for(lang)})")
     out.append(f"- {t('label_basis', lang)}: {version.legal_basis}")
     if schedule is not None and schedule_version is not None:
@@ -511,46 +556,54 @@ def render_result(result, rule, version, lang: str, notes: List[str], changes: L
     for s in result.steps:
         kind = s["kind"]
         line: Optional[str] = None
+        # Law/rule constants (bracket bounds, base tax, caps, salary credit) use
+        # peso(); every computed figure and every input uses amount(): exact,
+        # to the centavo or finer, never rounded.
         if kind == "zero_bracket":
-            line = t("step_zero", lang, income=peso(s["income"]), not_over=peso(s["not_over"]))
+            line = t("step_zero", lang, income=amount(s["income"]), not_over=peso(s["not_over"]))
         elif kind == "excess":
-            line = t("step_excess", lang, over=peso(s["over"]), income=peso(s["income"]), excess=peso(s["excess"]))
+            line = t("step_excess", lang, over=peso(s["over"]), income=amount(s["income"]), excess=amount(s["excess"]))
         elif kind == "rate_times_excess":
-            line = t("step_rate", lang, rate=pct(s["rate"]), excess=peso(s["excess"]), result=peso(s["result"]))
+            line = t("step_rate", lang, rate=pct(s["rate"]), excess=amount(s["excess"]), result=amount(s["result"]))
         elif kind == "add_base":
-            line = t("step_add_base", lang, base=peso(s["base_tax"]), rate_part=peso(s["rate_part"]), tax_due=peso(s["tax_due"]))
+            line = t("step_add_base", lang, base=peso(s["base_tax"]), rate_part=amount(s["rate_part"]),
+                     tax_due=amount(s["tax_due"]))
         elif kind == "gross_total":
-            line = t("step_gross_total", lang, sales=peso(s["sales"]), other=peso(s["other"]), gross=peso(s["gross"]))
+            line = t("step_gross_total", lang, sales=amount(s["sales"]), other=amount(s["other"]), gross=amount(s["gross"]))
         elif kind == "less_threshold":
-            line = t("step_less_threshold", lang, gross=peso(s["gross"]), deduction=peso(s["deduction"]), net=peso(s["net"]))
+            line = t("step_less_threshold", lang, gross=amount(s["gross"]), deduction=peso(s["deduction"]),
+                     net=amount(s["net"]))
         elif kind == "flat_rate":
-            line = t("step_flat_rate", lang, rate=pct(s["rate"]), net=peso(s["net"]), tax_due=peso(s["tax_due"]))
+            line = t("step_flat_rate", lang, rate=pct(s["rate"]), net=amount(s["net"]), tax_due=amount(s["tax_due"]))
         elif kind == "annualize":
-            line = t("step_annualize", lang, gross=peso(s["gross"]), periods=s["periods"], annual=peso(s["annual"]))
+            line = t("step_annualize", lang, gross=amount(s["gross"]), periods=s["periods"], annual=amount(s["annual"]))
         elif kind == "contrib_auto":
-            line = t("step_contrib_auto", lang, monthly=peso(s["monthly"]), sss_rate=pct(s["sss_rate"]),
-                     msc=peso(s["msc"]), sss=peso(s["sss"]), ph_rate=pct(s["ph_rate"]), ph_base=peso(s["ph_base"]),
-                     ph=peso(s["philhealth"]), pi_rate=pct(s["pi_rate"]), pi_base=peso(s["pi_base"]),
-                     pi=peso(s["pagibig"]), monthly_total=peso(s["monthly_total"]), annual=peso(s["annual"]))
+            line = t("step_contrib_auto", lang, monthly=amount(s["monthly"], _ex(s, "monthly")),
+                     sss_rate=pct(s["sss_rate"]), msc=peso(s["msc"]), sss=amount(s["sss"], _ex(s, "sss")),
+                     ph_rate=pct(s["ph_rate"]), ph_base=amount(s["ph_base"], _ex(s, "ph_base")),
+                     ph=amount(s["philhealth"], _ex(s, "philhealth")), pi_rate=pct(s["pi_rate"]),
+                     pi_base=amount(s["pi_base"], _ex(s, "pi_base")), pi=amount(s["pagibig"], _ex(s, "pagibig")),
+                     monthly_total=amount(s["monthly_total"], _ex(s, "monthly_total")), annual=amount(s["annual"]))
         elif kind == "contrib_manual":
-            line = t("step_contrib_manual", lang, annual=peso(s["annual"]))
+            line = t("step_contrib_manual", lang, annual=amount(s["annual"]))
         elif kind == "benefits":
-            line = t("step_benefits", lang, benefits=peso(s["benefits"]), cap=peso(s["cap"]), taxable=peso(s["taxable"]))
+            line = t("step_benefits", lang, benefits=amount(s["benefits"]), cap=peso(s["cap"]), taxable=amount(s["taxable"]))
         elif kind == "taxable_compensation":
-            plus = f" + {peso(s['taxable_benefits'])}" if Decimal(str(s["taxable_benefits"])) > 0 else ""
-            line = t("step_taxable_comp", lang, annual=peso(s["annual"]), contributions=peso(s["contributions"]),
-                     plus_benefits=plus, taxable=peso(s["taxable"]))
+            plus = f" + {amount(s['taxable_benefits'])}" if Decimal(str(s["taxable_benefits"])) > 0 else ""
+            line = t("step_taxable_comp", lang, annual=amount(s["annual"]), contributions=amount(s["contributions"]),
+                     plus_benefits=plus, taxable=amount(s["taxable"]))
         elif kind == "per_period":
-            line = t("step_per_period", lang, period=period_name(s["period"], lang), tax_due=peso(s["tax_due"]),
-                     periods=s["periods"], tax=peso(s["tax"]), gross=peso(s["gross"]),
-                     contributions=peso(s["contributions"]), take_home=peso(s["take_home"]))
+            line = t("step_per_period", lang, period=period_name(s["period"], lang), tax_due=amount(s["tax_due"]),
+                     periods=s["periods"], tax=amount(s["tax"], _ex(s, "tax")), gross=amount(s["gross"]),
+                     contributions=amount(s["contributions"], _ex(s, "contributions")),
+                     take_home=amount(s["take_home"], _ex(s, "take_home")))
         elif kind == "less_withheld":
             payable = Decimal(str(s["payable"]))
-            args = dict(tax_due=peso(s["tax_due"]), withheld=peso(s["withheld"]))
+            args = dict(tax_due=amount(s["tax_due"]), withheld=amount(s["withheld"]))
             if payable > 0:
-                line = t("step_withheld_payable", lang, payable=peso(payable), **args)
+                line = t("step_withheld_payable", lang, payable=amount(payable), **args)
             elif payable < 0:
-                line = t("step_withheld_over", lang, excess=peso(-payable), **args)
+                line = t("step_withheld_over", lang, excess=amount(-payable), **args)
             else:
                 line = t("step_withheld_zero", lang, **args)
         if line:

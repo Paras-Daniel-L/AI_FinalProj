@@ -108,7 +108,9 @@ _SELF_EMPLOYED_RE = re.compile(
     r"online seller|\bseller\b|\bpractitioner\b|\bconsultant\b",
     re.I,
 )
-_EMPLOYEE_RE = re.compile(r"\bemployee\b|\bempleyado\b|\bemployed\b|\bsahod\b|\bsweldo\b|\bsuweldo\b|\bsalary\b|\bcompensation\b|minimum wage", re.I)
+# "employed" must not match inside "self-employed" (that made every
+# self-employed message look like mixed income and refused it).
+_EMPLOYEE_RE = re.compile(r"\bemployee\b|\bempleyado\b|(?<!self-)(?<!self )(?<!self)\bemployed\b|\bsahod\b|\bsweldo\b|\bsuweldo\b|\bsalary\b|\bcompensation\b|minimum wage", re.I)
 
 # Taxes with no computation rule yet. Display keys are localized in messages.py.
 _UNSUPPORTED_TAX_RES: List[Tuple[str, re.Pattern]] = [
@@ -191,6 +193,15 @@ def _nearest_cue(segment: str, from_end: bool) -> Optional[str]:
     return best[1] if best else None
 
 
+def _word_start(text: str, start: int, floor: int) -> int:
+    """Move a window's start back to the beginning of the word it cuts, so a
+    fixed-width window never reads half a word ("semi-monthly" cut to
+    "-monthly" made semi-monthly pay look monthly)."""
+    while start > floor and not text[start - 1].isspace():
+        start -= 1
+    return start
+
+
 def parse_amounts(text: str) -> Tuple[List[Amount], List[str]]:
     masked = _mask(text, _NOT_AMOUNT_RES)
     only_number = bool(re.fullmatch(r"\s*(?:₱|php|p)?\s?[\d,.]+\s?(?:k|m|million|thousand)?\s*[.!]?\s*", text, re.I))
@@ -216,7 +227,7 @@ def parse_amounts(text: str) -> Tuple[List[Amount], List[str]]:
 
         prev_end = matches[i - 1].end() if i else 0
         next_start = matches[i + 1].start() if i + 1 < len(matches) else len(text)
-        before = text[max(prev_end, m.start() - 45): m.start()]
+        before = text[_word_start(text, max(prev_end, m.start() - 45), prev_end): m.start()]
         after = text[m.end(): min(next_start, m.end() + 40)]
         role = _nearest_cue(before, from_end=True) or _nearest_cue(after, from_end=False)
 
@@ -232,7 +243,7 @@ def parse_amounts(text: str) -> Tuple[List[Amount], List[str]]:
             invalid.append(m.group(0).strip())
             continue
 
-        window = text[max(prev_end, m.start() - 20): min(next_start, m.end() + 25)]
+        window = text[_word_start(text, max(prev_end, m.start() - 20), prev_end): min(next_start, m.end() + 25)]
         found.append(Amount(
             value=value, role=role or "unlabeled", raw=m.group(0).strip(),
             period=detect_period(window), start=m.start(), end=m.end(),

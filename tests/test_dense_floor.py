@@ -65,4 +65,4 @@ def test_settings_are_recorded_for_the_cache_and_evaluation():
 
 def test_version_label_matches_the_default_settings():
     assert version.SYSTEM_VERSION.startswith("1.5")
-    assert version.effective_label() == "v1.5.1"
+    assert version.effective_label() == "v1.5.2"
