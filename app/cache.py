@@ -117,11 +117,11 @@ def config_fingerprint() -> str:
     shapes an answer. Imported lazily to keep this module's top-level imports
     stdlib-only. Constant for the life of the process, so computed once.
     """
-    from . import llm, prompts, retrieval
+    from . import answerability, grounding, llm, prompts, retrieval
     from .embeddings import EMBEDDING_CONFIG
 
     prompt_text = "\n".join(
-        [prompts.SYSTEM_PROMPT, prompts.RAG_PROMPT, prompts.VERIFIER_SYSTEM_PROMPT, prompts.VERIFY_PROMPT]
+        [prompts.SYSTEM_PROMPT, prompts.RAG_PROMPT, prompts.VERIFIER_SYSTEM_PROMPT, prompts.ACTIVE_VERIFY_PROMPT]
     )
     parts: Dict[str, Any] = {
         "generator": llm.GENERATOR_MODEL,
@@ -132,16 +132,12 @@ def config_fingerprint() -> str:
         "max_tokens": [llm.GENERATOR_MAX_TOKENS, llm.VERIFIER_MAX_TOKENS],
         "providers": [llm.GENERATOR_PROVIDERS, llm.VERIFIER_PROVIDERS],
         "prompts": hashlib.sha1(prompt_text.encode("utf-8")).hexdigest(),
-        "retrieval": [
-            retrieval.RRF_K,
-            retrieval.SEMANTIC_TOP_K,
-            retrieval.BM25_TOP_K,
-            retrieval.RRF_FINAL_TOP_K,
-            retrieval.MIN_RRF_SCORE,
-            retrieval.MIN_RETRIEVER_CORROBORATION,
-            retrieval.MAX_SEMANTIC_DISTANCE,
-        ],
+        "retrieval": retrieval.retrieval_settings(),
         "embedding": EMBEDDING_CONFIG,
+        # system v1.6: the evidence gate, non-answer detector, deterministic
+        # grounding check and claim repair change which answers are shown.
+        "answerability": answerability.settings(),
+        "grounding": grounding.settings(),
     }
     blob = json.dumps(parts, sort_keys=True, default=str)
     return hashlib.sha1(blob.encode("utf-8")).hexdigest()

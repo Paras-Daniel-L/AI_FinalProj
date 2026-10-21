@@ -26,6 +26,12 @@ from scipy import stats as scipy_stats
 
 ALPHA = 0.05
 
+# Fewer non-tied pairs than this and the rank-biserial r is reported but NOT
+# labeled. With 2 non-zero differences r can only be -1, 0 or +1, so a
+# "large effect" label there (RQ1 Groundedness in the first run: r = 1.0,
+# p = 0.5, 16 of 18 pairs tied) describes the arithmetic, not the systems.
+MIN_NONZERO_FOR_EFFECT_LABEL = 6
+
 
 # Effect-size bands, per the SOP's "Effect Size" section (p. 69):
 #   Cohen's d:          < 0.2 negligible, 0.2-0.5 small, 0.5-0.8 medium, > 0.8 large
@@ -146,7 +152,15 @@ def paired_comparison(a: Sequence[Optional[float]], b: Sequence[Optional[float]]
         result.test_used = "wilcoxon signed-rank"
         result.statistic, result.p_value = float(w_stat), float(p_value)
         result.effect_size, result.effect_size_type = rank_biserial, "rank_biserial_r"
-        result.effect_size_label = _effect_label(rank_biserial, "rank_biserial_r")
+        if len(nonzero) >= MIN_NONZERO_FOR_EFFECT_LABEL:
+            result.effect_size_label = _effect_label(rank_biserial, "rank_biserial_r")
+        else:
+            result.effect_size_label = None
+            result.note = (
+                f"only {len(nonzero)} non-tied pair(s) ({result.n_ties_dropped} tied) — the "
+                f"rank-biserial r is not interpretable as an effect size at this n; report "
+                f"the tie count instead of an effect-size label"
+            )
 
     result.significant = result.p_value is not None and result.p_value < alpha
     return result
@@ -201,4 +215,4 @@ def confusion_metrics(y_true: Sequence[int], y_pred: Sequence[int]) -> TriggerMe
         fpr=fpr,
         meets_recall_threshold=(recall >= MIN_TRIGGER_RECALL) if recall is not None else None,
         meets_fpr_threshold=(fpr < MAX_FALSE_POSITIVE_RATE) if fpr is not None else None,
-    )
+    )

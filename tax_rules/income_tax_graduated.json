@@ -1,0 +1,84 @@
+{
+  "rule_id": "ph-individual-income-tax-graduated",
+  "tax_type": "income_tax_graduated",
+  "method": "graduated_schedule",
+  "jurisdiction": "PH",
+  "document_type": "tax_rate_schedule",
+  "computation_related": true,
+  "name": {
+    "english": "Graduated income tax rates for individuals",
+    "filipino": "Graduated na income tax rates para sa mga indibidwal",
+    "taglish": "Graduated income tax rates para sa individuals"
+  },
+  "applies_to": "Resident citizens, non-resident citizens and resident aliens taxed on taxable income under the graduated rates (compensation earners, and self-employed individuals who did not elect the 8% option).",
+  "inputs": {
+    "tax_year": {"type": "year", "required": true},
+    "taxable_income": {"type": "amount", "required": true, "min": "0"},
+    "tax_withheld": {"type": "amount", "required": false, "min": "0"}
+  },
+  "kb_references": [
+    {
+      "title": "BIR_Income_Tax_FAQ",
+      "page": 5,
+      "what": "Computation steps: gross income less allowable deductions = net taxable income; x tax rate = income tax due; less tax withheld (BIR Form 2316) = income tax payable (Question 10, Part A)."
+    }
+  ],
+  "versions": [
+    {
+      "version_id": "train-2018-2022",
+      "tax_year_from": 2018,
+      "tax_year_to": 2022,
+      "label": {
+        "english": "TRAIN schedule for tax years 2018 to 2022",
+        "filipino": "TRAIN schedule para sa taong 2018 hanggang 2022",
+        "taglish": "TRAIN schedule para sa tax years 2018 to 2022"
+      },
+      "legal_basis": "Sec. 24(A)(2)(a), NIRC of 1997 as amended by Sec. 5 of RA No. 10963 (TRAIN Law): schedule effective January 1, 2018 until December 31, 2022",
+      "brackets": [
+        {"over": "0",       "not_over": "250000",  "base_tax": "0",       "rate": "0"},
+        {"over": "250000",  "not_over": "400000",  "base_tax": "0",       "rate": "0.20"},
+        {"over": "400000",  "not_over": "800000",  "base_tax": "30000",   "rate": "0.25"},
+        {"over": "800000",  "not_over": "2000000", "base_tax": "130000",  "rate": "0.30"},
+        {"over": "2000000", "not_over": "8000000", "base_tax": "490000",  "rate": "0.32"},
+        {"over": "8000000", "not_over": null,      "base_tax": "2410000", "rate": "0.35"}
+      ],
+      "sources": [
+        {"title": "Republic Act No. 10963 (TRAIN Law), Sec. 5 amending Sec. 24(A)(2)(a) NIRC", "url": "https://lawphil.net/statutes/repacts/ra2017/ra_10963_2017.html"},
+        {"title": "Senate Tax Study and Research Office, Primer on the TRAIN Law (March 2018)", "url": "https://legacy.senate.gov.ph/publications/STSRO/primer%20on%20TRAIN%20LAW%202018%20as%20of%20march%2013.pdf"}
+      ],
+      "verification": {
+        "status": "verified",
+        "checked_on": "2026-10-06",
+        "notes": "The RA 10963 text as published reads 'Over P2,000,000 but not over P5,000,000' for the 32% bracket, while the next bracket starts 'Over P8,000,000' with a P2,410,000 base. P490,000 + 32% x (P8,000,000 - P2,000,000) = P2,410,000, so the upper bound must be P8,000,000; the Senate STSRO primer states P8,000,000. The loader re-checks this arithmetic for every bracket."
+      }
+    },
+    {
+      "version_id": "train-2023-onwards",
+      "tax_year_from": 2023,
+      "tax_year_to": 2026,
+      "label": {
+        "english": "TRAIN schedule for tax years 2023 onwards",
+        "filipino": "TRAIN schedule para sa taong 2023 pataas",
+        "taglish": "TRAIN schedule para sa tax years 2023 onwards"
+      },
+      "legal_basis": "Sec. 24(A)(2)(a), NIRC of 1997 as amended by Sec. 5 of RA No. 10963 (TRAIN Law): schedule effective January 1, 2023 and onwards",
+      "brackets": [
+        {"over": "0",       "not_over": "250000",  "base_tax": "0",       "rate": "0"},
+        {"over": "250000",  "not_over": "400000",  "base_tax": "0",       "rate": "0.15"},
+        {"over": "400000",  "not_over": "800000",  "base_tax": "22500",   "rate": "0.20"},
+        {"over": "800000",  "not_over": "2000000", "base_tax": "102500",  "rate": "0.25"},
+        {"over": "2000000", "not_over": "8000000", "base_tax": "402500",  "rate": "0.30"},
+        {"over": "8000000", "not_over": null,      "base_tax": "2202500", "rate": "0.35"}
+      ],
+      "sources": [
+        {"title": "Republic Act No. 10963 (TRAIN Law), Sec. 5 amending Sec. 24(A)(2)(a) NIRC", "url": "https://lawphil.net/statutes/repacts/ra2017/ra_10963_2017.html"},
+        {"title": "Senate Tax Study and Research Office, Primer on the TRAIN Law (March 2018)", "url": "https://legacy.senate.gov.ph/publications/STSRO/primer%20on%20TRAIN%20LAW%202018%20as%20of%20march%2013.pdf"}
+      ],
+      "verification": {
+        "status": "verified",
+        "checked_on": "2026-10-06",
+        "notes": "The law says 'January 1, 2023 and onwards'. tax_year_to is the last year a maintainer has confirmed no amendment; extend it (after checking) instead of letting the rule apply to years nobody has checked."
+      }
+    }
+  ]
+}

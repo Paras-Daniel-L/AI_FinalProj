@@ -1,0 +1,343 @@
+{
+  "n_rows_total": 100,
+  "n_units_scored": 4,
+  "n_errors": 0,
+  "rq1_english_vs_taglish": null,
+  "rq2_language_detection": {
+    "confusion_metrics": {
+      "tp": 20,
+      "fn": 0,
+      "fp": 0,
+      "tn": 20,
+      "n": 40,
+      "precision": 1.0,
+      "recall": 1.0,
+      "fpr": 0.0,
+      "meets_recall_threshold": true,
+      "meets_fpr_threshold": true
+    },
+    "rows": [
+      {
+        "qid": "A1-EN",
+        "query": "Do online sellers need to display a BIR Registration Seal Badge on their shop profiles or websites?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A1-TL",
+        "query": "Kailangan bang mag-display ng BIR Registration Seal Badge ang mga online seller sa kanilang shop profile o website?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      },
+      {
+        "qid": "A2-EN",
+        "query": "Is offshore gaming or POGO now completely banned and illegal in the Philippines?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A2-TL",
+        "query": "Bawal at ilegal na ba talaga ang offshore gaming o POGO sa Pilipinas ngayon?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      },
+      {
+        "qid": "A3-EN",
+        "query": "Are digital services like video streaming and online platforms subject to Value-Added Tax?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A3-TL",
+        "query": "May Value-Added Tax ba na ipinapataw sa mga digital services tulad ng video streaming at online platforms?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      },
+      {
+        "qid": "A4-EN",
+        "query": "How much is the excise tax imposed on locally manufactured perfumes and toilet waters?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A4-TL",
+        "query": "Magkano ang ipinapataw na excise tax sa mga pabango at toilet water na gawa rito sa Pilipinas?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      },
+      {
+        "qid": "A5-EN",
+        "query": "What is the annual gross sales limit to qualify as a Micro Taxpayer under the Ease of Paying Taxes Act?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A5-TL",
+        "query": "Ano ang limitasyon sa taunang gross sales para maituring na Micro Taxpayer sa ilalim ng Ease of Paying Taxes Act?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      },
+      {
+        "qid": "A6-EN",
+        "query": "Can taxpayers verify a Letter of Authority (LOA) through the BIR's Chatbot REVIE?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A6-TL",
+        "query": "Pwede bang i-verify ng mga taxpayer ang Letter of Authority (LOA) gamit ang Chatbot REVIE ng BIR?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      },
+      {
+        "qid": "A7-EN",
+        "query": "Will e-marketplace operators deduct withholding tax from remittances to their online sellers?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A7-TL",
+        "query": "Magkakaltas ba ng withholding tax ang mga e-marketplace operator sa mga ibinabayad sa kanilang online sellers?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      },
+      {
+        "qid": "A8-EN",
+        "query": "Has the BIR established a mandatory floor price for selling cigarettes and vape products?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A8-TL",
+        "query": "Nagtakda ba ang BIR ng opisyal na pinakamababang presyo o floor price sa pagbenta ng sigarilyo at vape?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      },
+      {
+        "qid": "A9-EN",
+        "query": "What are the rules for donor's tax on donations consisting purely of cash?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A9-TL",
+        "query": "Ano ang mga panuntunan sa donor's tax para sa mga donasyon na binubuo lamang ng purong cash?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      },
+      {
+        "qid": "A10-EN",
+        "query": "Does the cross-border doctrine still apply to ecozones for VAT zero-rating purposes?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A10-TL",
+        "query": "Umiiral pa ba ang cross-border doctrine para sa VAT zero-rating sa loob ng mga ecozone?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      },
+      {
+        "qid": "A11-EN",
+        "query": "Can a taxpayer claim an output VAT credit for uncollected receivables under the Ease of Paying Taxes Act?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A11-TL",
+        "query": "Pwede bang mag-claim ng output VAT credit ang taxpayer sa mga hindi nakolektang utang sa ilalim ng Ease of Paying Taxes Act?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      },
+      {
+        "qid": "A12-EN",
+        "query": "Has the BIR resumed its field audits and tax investigations in 2026?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A12-TL",
+        "query": "Ipinagpatuloy na ba ng BIR ang kanilang field audit at tax investigations ngayong 2026?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      },
+      {
+        "qid": "A13-EN",
+        "query": "Are electric distribution utilities required to include third-party pass-through charges in their gross sales?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A13-TL",
+        "query": "Kailangan bang isama ng mga distribution utility sa kuryente ang mga third-party pass-through charges sa kanilang gross sales?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      },
+      {
+        "qid": "A14-EN",
+        "query": "Which law grants fiscal incentives for the development of natural gas facilities in the Philippines?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A14-TL",
+        "query": "Anong batas ang nagbibigay ng fiscal incentives para sa pagpapatayo ng mga natural gas facilities sa Pilipinas?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      },
+      {
+        "qid": "A15-EN",
+        "query": "When must PAGCOR licensees file the franchise tax return and pay the franchise tax to the BIR?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A15-TL",
+        "query": "Kailan dapat mag-file ng franchise tax return at magbayad ng franchise tax sa BIR ang mga PAGCOR licensee?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      },
+      {
+        "qid": "A16-EN",
+        "query": "Can the BIR issue a Subpoena Duces Tecum for compliance monitoring even without an ongoing audit?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A16-TL",
+        "query": "Pwede bang maglabas ang BIR ng Subpoena Duces Tecum para sa regular na pag-monitor kahit walang aktibong audit?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      },
+      {
+        "qid": "A17-EN",
+        "query": "Are vapor products required to carry internal revenue tax stamps before being distributed?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A17-TL",
+        "query": "Kailangan bang lagyan ng internal revenue tax stamp ang mga vapor product bago ibenta sa merkado?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      },
+      {
+        "qid": "A18-EN",
+        "query": "What is the preferential corporate income tax rate for non-profit proprietary educational institutions?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A18-TL",
+        "query": "Magkano ang preferential corporate income tax rate para sa mga non-profit proprietary educational institutions?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      },
+      {
+        "qid": "A19-EN",
+        "query": "Is it mandatory to register loose-leaf and computerized books of accounts online via ORUS?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A19-TL",
+        "query": "Kailangan bang irehistro online sa ORUS ang mga loose-leaf at computerized books of accounts?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      },
+      {
+        "qid": "A20-EN",
+        "query": "Are Sukuk or Islamic bonds treated neutrally compared to conventional bonds for tax purposes?",
+        "expected_non_english": false,
+        "detected_label": "english",
+        "predicted_non_english": false,
+        "correct": true
+      },
+      {
+        "qid": "A20-TL",
+        "query": "Pareho ba ang tax treatment ng Sukuk o Islamic bonds sa mga regular na bonds para masunod ang tax neutrality?",
+        "expected_non_english": true,
+        "detected_label": "filipino",
+        "predicted_non_english": true,
+        "correct": true
+      }
+    ]
+  },
+  "rq3_sagot_vs_revie": null
+}

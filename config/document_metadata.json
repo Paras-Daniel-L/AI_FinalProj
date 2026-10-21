@@ -1,0 +1,31 @@
+{
+  "_about": "Extra metadata stamped on every chunk of a PDF at ingestion (app/database.py: apply_document_metadata). Chroma metadata must be scalar: strings, numbers or booleans. 'defaults_by_category' is keyed by the data/ folder name ('faq', '2024', ...; '*' = any other folder). 'files' is keyed by PDF file name and overrides the defaults. Re-ingest with `python -m app.database --reset` after editing so existing chunks pick up the change.",
+  "fields": {
+    "document_type": "issuance | faq | reference_note | tax_rule_source | other",
+    "tax_type": "income_tax | vat | withholding | ... ('' = not specific)",
+    "tax_year": "the tax year a rule document applies to ('' = not year-specific)",
+    "jurisdiction": "PH",
+    "computation_related": "true when the document explains how a tax is computed",
+    "rule_ids": "comma-separated tax_rules/*.json rule_id values this document supports"
+  },
+  "defaults_by_category": {
+    "faq": {"document_type": "faq", "jurisdiction": "PH"},
+    "reference": {"document_type": "reference_note", "jurisdiction": "PH"},
+    "*": {"document_type": "issuance", "jurisdiction": "PH"}
+  },
+  "files": {
+    "BIR_Income_Tax_FAQ.pdf": {
+      "document_type": "faq",
+      "tax_type": "income_tax",
+      "computation_related": true,
+      "rule_ids": "ph-individual-income-tax-graduated,ph-individual-income-tax-8-percent"
+    },
+    "Employee_Compensation_Tax_Reference.pdf": {
+      "document_type": "reference_note",
+      "tax_type": "income_tax",
+      "tax_year": "2025-2026",
+      "computation_related": true,
+      "rule_ids": "ph-employee-income-tax-from-gross-pay,ph-employee-mandatory-contributions,ph-individual-income-tax-graduated"
+    }
+  }
+}

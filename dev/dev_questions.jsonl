@@ -1,0 +1,33 @@
+{"id": "D01", "query": "what is income?", "label": "answerable", "label_status": "proposed", "reference": "", "note": "definition in the BIR Income Tax FAQ"}
+{"id": "D02", "query": "What is Gross Income?", "label": "answerable", "label_status": "proposed", "reference": "", "note": "FAQ"}
+{"id": "D03", "query": "ano ano ang pwedeng ibawas sa gross income?", "label": "answerable", "label_status": "proposed", "reference": "", "note": "OSD vs itemized (FAQ)"}
+{"id": "D04", "query": "kailan nilabas REVENUE MEMORANDUM RULING NO. 2-2002", "label": "answerable", "label_status": "proposed", "reference": "", "note": "issuance in the 2002 folder"}
+{"id": "D05", "query": "gaano katagal pwede nating baguhin ang income tax return?", "label": "answerable", "label_status": "proposed", "reference": "", "note": "amendment of ITR (FAQ)"}
+{"id": "D06", "query": "Paano mag-file ng form 1701a", "label": "answerable", "label_status": "proposed", "reference": "", "note": "1701A filing"}
+{"id": "D07", "query": "what is form 1701 and how to file it?", "label": "answerable", "label_status": "proposed", "reference": "", "note": "1701 filing"}
+{"id": "D08", "query": "ano ang form 1701a at paano mag-file nito?", "label": "answerable", "label_status": "proposed", "reference": "", "note": "1701A filing"}
+{"id": "D09", "query": "May maliit akong sari-sari store. Paano ako mag-register sa BIR at ano ang mga requirements?", "label": "answerable", "label_status": "proposed", "reference": "", "note": "registration (partly covered)"}
+{"id": "D10", "query": "magkano ang vat sa pilipinas?", "label": "answerable", "label_status": "proposed", "reference": "", "note": "12% VAT"}
+{"id": "D11", "query": "Paano kung may TIN na pala ako dati? Pwede ba akong mag-apply ulit", "label": "answerable", "label_status": "proposed", "reference": "", "note": "RMC 37-2024 TIN inquiry"}
+{"id": "D12", "query": "I'm a public school teacher and may side hustle akong online tutoring. Kailangan ko bang mag-file ng income tax return?", "label": "answerable", "label_status": "proposed", "reference": "", "note": "mixed income filing (check)"}
+{"id": "D13", "query": "ano ang patakaran ng bir kung ako ay hindi nakapagbayad ng buwis", "label": "unknown", "label_status": "proposed", "reference": "", "note": "penalties: check whether the corpus covers it"}
+{"id": "D14", "query": "ano ang basic computation ng estate tax", "label": "unknown", "label_status": "proposed", "reference": "", "note": "check whether the corpus covers it"}
+{"id": "D15", "query": "ano ang efps", "label": "answerable", "label_status": "proposed", "reference": "", "note": "eFPS is named in many issuances"}
+{"id": "D16", "query": "what is eFPS?", "label": "answerable", "label_status": "proposed", "reference": "", "note": "eFPS"}
+{"id": "D17", "query": "paano kumuha ng philhealth", "label": "not_in_corpus", "label_status": "proposed", "reference": "", "note": "PhilHealth membership is not a BIR topic"}
+{"id": "D18", "query": "paano magapply at kumuha ng philhealth number?", "label": "not_in_corpus", "label_status": "proposed", "reference": "", "note": "PhilHealth"}
+{"id": "D19", "query": "paano mag apply ng sss kung solo parent ako?", "label": "not_in_corpus", "label_status": "proposed", "reference": "", "note": "SSS"}
+{"id": "D20", "query": "I'm a fresh grad na kakastart lang sa first job ko. Paano ko makukuha ang TIN ko?", "label": "unknown", "label_status": "proposed", "reference": "", "note": "first TIN: check whether any document covers it (RMC 37-2024 is TIN inquiry only)"}
+{"id": "D21", "query": "Kung mag-file ako, kailangan ko pa bang isama ang sweldo ko sa school, or yung tutoring income lang?", "label": "unknown", "label_status": "proposed", "reference": "", "note": "mixed income: check"}
+{"id": "D22", "query": "Ano yung difference ng registered sa unregistered na business pagdating sa penalties?", "label": "unknown", "label_status": "proposed", "reference": "", "note": "check"}
+{"id": "D23", "query": "magkano ang tax sa netflix", "label": "not_in_corpus", "label_status": "proposed", "reference": "", "note": "no document names Netflix"}
+{"id": "D24", "query": "magkano ang tax sa roblox", "label": "not_in_corpus", "label_status": "proposed", "reference": "", "note": "no document names Roblox"}
+{"id": "D25", "query": "may vat ba ang netflix magkano?", "label": "unknown", "label_status": "proposed", "reference": "", "note": "digital services VAT applies generally; Netflix is not named"}
+{"id": "D26", "query": "may vat na ba sa roblox?", "label": "unknown", "label_status": "proposed", "reference": "", "note": "digital services VAT applies generally; Roblox is not named"}
+{"id": "D27", "query": "sino si bongbong", "label": "out_of_scope", "label_status": "proposed", "reference": "", "note": ""}
+{"id": "D28", "query": "anong taon na", "label": "out_of_scope", "label_status": "proposed", "reference": "", "note": ""}
+{"id": "D29", "query": "what is monopoly", "label": "out_of_scope", "label_status": "proposed", "reference": "", "note": ""}
+{"id": "D30", "query": "sino ang pumatay kay rizal", "label": "out_of_scope", "label_status": "proposed", "reference": "", "note": ""}
+{"id": "D31", "query": "sino si kyla igit?", "label": "out_of_scope", "label_status": "proposed", "reference": "", "note": ""}
+{"id": "D32", "query": "malungkot ako ngayon pano mo ako matutulungan", "label": "out_of_scope", "label_status": "proposed", "reference": "", "note": "should route to chat"}
+{"id": "D33", "query": "hello sino ka ba ano ba kaya mong gawin pwede mo ba ako suntukin?", "label": "out_of_scope", "label_status": "proposed", "reference": "", "note": "should route to chat"}

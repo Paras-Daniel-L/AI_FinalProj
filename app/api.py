@@ -14,7 +14,7 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -22,23 +22,33 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from langchain_chroma import Chroma
 
+from . import answerability
 from . import cache as answer_cache
+from . import intent as intent_router
+from . import progress
+from . import recovery
 from . import trace as trace_log
+from .version import SYSTEM_VERSION, SYSTEM_VERSION_LABEL
 from .classifier import NO_SOURCES_LABEL, get_year_filter, label_from_docs
+from .computation import dialogue as computation
+from .computation.extract import extract as extract_inputs
+from .computation.extract import looks_like_new_question
 from .database import add_to_chroma, clear_database, load_documents, split_documents
 from .embeddings import check_index_compatible, get_embedding_function
 from .greetings import is_greeting
 from .guard import guard_middleware
 from .language import LanguageResult, detect_language
+from .language import language_from_label as _language_from_label
 from .llm import OUTCOME_ERROR, OUTCOME_VERIFIED, run_rag
-from .prompts import get_greeting_message, get_no_answer_message
+from .prompts import get_greeting_message
 from .retrieval import format_context, retrieve_docs, source_label, source_labels
 from .sanitize import rejection_message, sanitize_history, sanitize_query
-from .schemas import QueryRequest, QueryResponse, StatusResponse
+from .schemas import ComputationState, QueryRequest, QueryResponse, StatusResponse
 
 load_dotenv()
 
-app = FastAPI(title="Sagot AI API", version="2.0.0")
+app = FastAPI(title="Sagot AI API", version=SYSTEM_VERSION)
+print(f"🏷️  Sagot AI system {SYSTEM_VERSION_LABEL}")
 
 # Public-sharing guard: per-IP rate limit, daily cap, /upload+/reset locked to
 # the host computer (see app/guard.py).
@@ -70,6 +80,18 @@ STATIC_DIR = Path(__file__).parent.parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+
+class ModelCallFailed(HTTPException):
+    """A generator/verifier call failed. run_query() still raises (the
+    evaluation harness retries such units, and the demo reports the error),
+    but /query catches it and returns the localized guidance it carries, so
+    the chat shows "please try again" instead of a server error (v1.6)."""
+
+    def __init__(self, detail: str, response: QueryResponse):
+        super().__init__(status_code=500, detail=detail)
+        self.response = response
+
 
 _warned_stale_index = False
 
@@ -106,20 +128,99 @@ def _greeting_response(lang: LanguageResult) -> QueryResponse:
     )
 
 
-def _no_answer_response(lang: LanguageResult) -> QueryResponse:
+def _no_answer_response(
+    lang: LanguageResult,
+    reason: str = recovery.REASON_NO_EVIDENCE,
+    intent: Optional[intent_router.Intent] = None,
+    docs=None,
+) -> QueryResponse:
     """
-    A tax query for which the knowledge base has no supporting evidence —
-    either the DB is empty, retrieval found nothing, or nothing survived
-    the coarse relevance filter. No generation call is made on this path
-    at all (no open-domain fallback exists to fall through to); the
-    localized refusal is returned directly.
+    No supported answer: the DB is empty, retrieval found nothing, the
+    generator said NO_ANSWER, or no draft passed verification. This used to
+    return one fixed "couldn't find" sentence (a dead end). It now returns
+    conversational guidance (app/recovery.py): an honest status, a
+    clarifying question for the user's topic, example questions, the closest
+    documents retrieval found (titles only), and what the bot can do. Still
+    no generation call and no tax facts on this path, and the sources are
+    NOT listed as if they supported an answer.
     """
+    topic = intent.topic if intent else "general"
+    if reason == recovery.REASON_NO_EVIDENCE and intent is not None and intent.label == intent_router.OUT_OF_SCOPE:
+        reason = recovery.REASON_OUT_OF_SCOPE
     return QueryResponse(
-        answer=get_no_answer_message(lang.label),
+        answer=recovery.guidance(lang.label, reason, topic, docs),
         sources=[],
         classification=NO_SOURCES_LABEL,
-        mode="no_answer",
+        mode=recovery.mode_for(reason),
         language=lang.label,
+    )
+
+
+def _clarify_response(lang: LanguageResult, intent: intent_router.Intent) -> QueryResponse:
+    """A message too short to retrieve on ("tax?", "VAT", "deadline?"):
+    ask what the user means instead of retrieving on one word."""
+    return QueryResponse(
+        answer=recovery.guidance(lang.label, recovery.REASON_VAGUE, intent.topic),
+        sources=[],
+        classification="Clarification needed",
+        mode=recovery.mode_for(recovery.REASON_VAGUE),
+        language=lang.label,
+    )
+
+
+def _chat_response(lang: LanguageResult) -> QueryResponse:
+    """ "What can you do?" / "sino ka?": fixed capability reply, no model call."""
+    return QueryResponse(
+        answer=recovery.chat_reply(lang.label),
+        sources=[],
+        classification="General",
+        mode="chat",
+        language=lang.label,
+    )
+
+
+def _kb_lookup(title: str, page: int) -> Optional[str]:
+    """
+    Is the knowledge-base page a tax rule points to (rule.kb_references)
+    actually in the index? A metadata-only Chroma lookup — no embedding call.
+    Returns a source label like "BIR_Income_Tax_FAQ, p.5 (faq)" or None.
+    """
+    try:
+        db = Chroma(persist_directory=CHROMA_PATH, embedding_function=get_embedding_function())
+        hit = db.get(where={"$and": [{"title": title}, {"page": int(page) - 1}]}, include=["metadatas"], limit=1)
+        metas = hit.get("metadatas") or []
+        if metas:
+            return f"{title}, p.{page} ({metas[0].get('year', '')})"
+    except Exception as e:
+        print(f"⚠️  [Computation] knowledge-base reference lookup failed: {e}")
+    return None
+
+
+def _wants_computation(query: str, intent: intent_router.Intent, state: Optional[ComputationState]) -> bool:
+    """
+    TAX_COMPUTATION intent, or — while a computation is open — a message that
+    carries a value for it ("800,000", "2025", "8%", "actually it's 850k",
+    "cancel"). A real new question that merely contains a year ("What is the
+    deadline for 2025?") goes to RAG instead, and the open computation is kept.
+    """
+    if intent.label == intent_router.TAX_COMPUTATION:
+        return True
+    if state is None:
+        return False
+    ex = extract_inputs(query)
+    if ex.cancel:
+        return True
+    if looks_like_new_question(query, ex):
+        return False
+    if ex.has_values:
+        return True
+    # While inputs are being collected, a short non-question reply is an
+    # attempt to answer ("eight hundred thousand", "ok"): let the computation
+    # ask again instead of searching the documents for it. A short message
+    # naming another tax ("VAT registration") is a question, not a reply.
+    return (
+        state.status == "collecting" and bool(state.awaiting) and not ex.unsupported_tax
+        and len(query.split()) <= 4 and "?" not in query
     )
 
 
@@ -181,7 +282,16 @@ def _retrieval_trace(docs) -> list:
             "retrievers": m.get("_source_retrievers"),
             "semantic_distance": m.get("_semantic_distance"),
             "bm25_score": m.get("_bm25_score"),
+            "rerank_score": m.get("_rerank_score"),
+            "id_match": m.get("_id_match"),
+            "dense_floor": bool(m.get("_dense_floor")),
+            "compressed": bool(m.get("_compressed")),
+            "sentences_kept": m.get("_sentences_kept"),
+            # `text` is exactly what the generator/verifier saw (compressed
+            # when EVIDENCE_COMPRESSION=1); the uncompressed chunk is kept
+            # separately so a reviewer can check what was trimmed.
             "text": doc.page_content,
+            "full_text": m.get("_full_text"),
         })
     return out
 
@@ -196,8 +306,14 @@ def run_query(body: QueryRequest) -> Tuple[QueryResponse, Dict[str, Any]]:
     including when something fails part-way (then outcome = "error" and the
     exception is re-raised; a failed model call becomes HTTPException(500)).
 
-    Trace outcomes: rejected_input | greeting | no_index | cache_hit |
-    no_retrieval | generator_no_answer | verified | verification_failed | error
+    Trace outcomes: rejected_input | greeting | chat | clarification |
+    no_index | cache_hit | no_retrieval | generator_no_answer | verified |
+    verification_failed | error, plus the computation outcomes in
+    app/computation/dialogue.py (computation_done, computation_needs_input,
+    computation_invalid_input, computation_unsupported_year,
+    computation_no_rule, computation_not_eligible, computation_cancelled).
+    The four "no supported answer" outcomes keep their names (rag_eval counts
+    them as refusals); only what the user is shown changed (app/recovery.py).
     """
     started = time.monotonic()
     tr: Dict[str, Any] = {
@@ -224,8 +340,20 @@ def run_query(body: QueryRequest) -> Tuple[QueryResponse, Dict[str, Any]]:
 def _run_query(body: QueryRequest, tr: Dict[str, Any], started: float) -> Tuple[QueryResponse, Dict[str, Any]]:
     request_id = tr["request_id"]
 
+    # Filled in as the request is routed; finish() attaches them to the reply.
+    ctx: Dict[str, Any] = {"intent": None, "open_state": None}
+
     def finish(response: QueryResponse, outcome: str, attempts: int = 0) -> Tuple[QueryResponse, Dict[str, Any]]:
         response.outcome, response.attempts, response.request_id = outcome, attempts, request_id
+        if ctx["intent"] is not None:
+            response.intent = ctx["intent"].label
+        # A computation that is still collecting inputs survives an unrelated
+        # turn (a greeting, a RAG question): hand it back so the user can
+        # continue, and say so. A completed one is dropped.
+        open_state = ctx["open_state"]
+        if open_state is not None and response.computation is None and not response.mode.startswith("computation"):
+            response.computation = open_state
+            response.answer = f"{response.answer}\n\n_{recovery.continue_computation_note(response.language or 'english')}_"
         tr.update(
             outcome=outcome,
             mode=response.mode,
@@ -237,6 +365,8 @@ def _run_query(body: QueryRequest, tr: Dict[str, Any], started: float) -> Tuple[
         )
         tr.setdefault("cost", None)
         trace_log.write(tr)
+        progress.emit("final", outcome=outcome, mode=response.mode, attempts=attempts,
+                      classification=response.classification, n_sources=len(response.sources or []))
         return response, tr
 
     # Step 0a: Sanitize (app/sanitize.py). Cleans the text (invisible and
@@ -252,6 +382,8 @@ def _run_query(body: QueryRequest, tr: Dict[str, Any], started: float) -> Tuple[
     tr.update(query=query, history_turns=len(history))
     if query == body.query:
         tr.pop("query_raw")  # only keep the raw text when cleaning changed it
+    progress.emit("sanitize", "done" if checked.ok else "failed", query=query,
+                  changed=query != body.query, reason=None if checked.ok else checked.reason)
 
     # Step 0b: Detect the user's language once, from the cleaned query,
     # before anything else runs. This value — not a re-derivation from a
@@ -259,8 +391,15 @@ def _run_query(body: QueryRequest, tr: Dict[str, Any], started: float) -> Tuple[
     # into generation. See app/language.py.
     lang = detect_language(query)
     tr.update(language=lang.label, language_hits={"filipino": lang.filipino_hits, "english": lang.english_hits})
+    progress.emit("language", label=lang.label, display_name=lang.display_name,
+                  filipino_hits=lang.filipino_hits, english_hits=lang.english_hits)
 
-    if not checked.ok:
+    # A computation reply can be very short ("8%") and still be valid input.
+    short_computation_reply = (
+        checked.reason == "empty" and body.computation_state is not None
+        and extract_inputs(query).has_values
+    )
+    if not checked.ok and not short_computation_reply:
         print(f"🧼 [Sanitize] rejected ({checked.reason}): {checked.info}")
         tr.update(sanitize_reason=checked.reason, sanitize_info=checked.info)
         return finish(_rejected_response(lang, rejection_message(checked, lang.label)), "rejected_input")
@@ -269,14 +408,66 @@ def _run_query(body: QueryRequest, tr: Dict[str, Any], started: float) -> Tuple[
     # call, no retrieval. Anything with real content attached to a
     # greeting-looking prefix does NOT match here and falls through to
     # the normal pipeline below.
+    state: Optional[ComputationState] = body.computation_state
+    if state is not None:
+        # A bare reply like "800,000" or "2025" has no language markers; keep
+        # answering in the language the computation started in.
+        if lang.filipino_hits == 0 and lang.english_hits == 0 and state.language in ("english", "filipino", "taglish"):
+            lang = _language_from_label(state.language)
+            tr["language"] = lang.label
+        tr["computation_state_in"] = state.model_dump()
+        if state.status == "collecting":
+            ctx["open_state"] = state
+
     if is_greeting(query):
+        progress.emit("route", target="greeting")
         return finish(_greeting_response(lang), "greeting")
+
+    # Step 1b: Intent (app/intent.py). CHAT and TAX_COMPUTATION leave the RAG
+    # path here; TAX_INFORMATION and OUT_OF_SCOPE both continue to retrieval
+    # (the knowledge base, not a word list, decides what is in scope).
+    intent = intent_router.classify(query)
+    ctx["intent"] = intent
+    tr["intent"] = intent.to_dict()
+    progress.emit("intent", label=intent.label, topic=intent.topic, vague=intent.vague)
+
+    if intent.label == intent_router.CHAT:
+        progress.emit("route", target="chat")
+        return finish(_chat_response(lang), "chat")
+
+    if _wants_computation(query, intent, state):
+        if intent.label == intent_router.TAX_COMPUTATION and state is not None and state.status == "completed" \
+                and not extract_inputs(query).has_values:
+            state = None  # "calculate my income tax" again = a new computation
+        ctx["open_state"] = None
+        turn = computation.handle(query, lang.label, state, kb_lookup=_kb_lookup)
+        tr["computation"] = {"outcome": turn.outcome, "state_out": turn.state.model_dump() if turn.state else None,
+                             "result": turn.result}
+        progress.emit("route", target="computation")
+        progress.emit("computation", outcome=turn.outcome, result=turn.result,
+                      awaiting=list(turn.state.awaiting) if turn.state else [])
+        return finish(QueryResponse(
+            answer=turn.answer,
+            sources=turn.sources,
+            classification=turn.classification,
+            mode=turn.mode,
+            language=lang.label,
+            computation=turn.state,
+        ), turn.outcome)
+
+    # Step 1c: Too short to retrieve on ("tax?", "VAT", "deadline?"): ask a
+    # clarifying question instead of retrieving on one word.
+    if intent.vague:
+        progress.emit("route", target="clarify")
+        return finish(_clarify_response(lang, intent), "clarification")
+    progress.emit("route", target="rag")
 
     # Step 2: Route (year filter from an explicit year/citation in the
     # query, or None for whole-corpus search). Rule-based; the
     # classification LABEL is derived later, from what retrieval found.
     year_filter = get_year_filter(query)
     tr["year_filter"] = year_filter
+    progress.emit("year_filter", year=year_filter)
 
     # Step 3: Knowledge query -> try RAG. An empty/unreachable DB means
     # there is no evidence to ground an answer in, so this returns a
@@ -290,8 +481,10 @@ def _run_query(body: QueryRequest, tr: Dict[str, Any], started: float) -> Tuple[
         tr["index_error"] = f"{type(e).__name__}: {e}"
 
     if db_empty or db is None:
-        return finish(_no_answer_response(lang), "no_index")
+        progress.emit("index", "failed", chunks=0, error=tr.get("index_error"))
+        return finish(_no_answer_response(lang, recovery.REASON_NO_INDEX, intent), "no_index")
     tr["index_chunks"] = len(chunk_ids)
+    progress.emit("index", chunks=len(chunk_ids))
 
     _warn_if_stale_index()
 
@@ -327,6 +520,7 @@ def _run_query(body: QueryRequest, tr: Dict[str, Any], started: float) -> Tuple[
             ), "cache_hit")
         print("💾 [Cache] miss — running the full pipeline")
         tr["cache"] = "miss"
+    progress.emit("cache", state=tr.get("cache"))
 
     # Step 4: Retrieve documents (RRF-fused, then coarse-relevance
     # filtered — see retrieve_docs()/filter_by_relevance() in
@@ -336,9 +530,25 @@ def _run_query(body: QueryRequest, tr: Dict[str, Any], started: float) -> Tuple[
     combined = retrieve_docs(query, year_filter, db)
     tr["retrieval_ms"] = int((time.monotonic() - t_retrieval) * 1000)
     tr["retrieved"] = _retrieval_trace(combined)
+    progress.emit("evidence", "done" if combined else "failed", ms=tr["retrieval_ms"], excerpts=[
+        {"label": r["label"], "rerank_score": r["rerank_score"], "retrievers": r["retrievers"],
+         "text": r["text"]} for r in tr["retrieved"]])
 
     if not combined:
-        return finish(_no_answer_response(lang), "no_retrieval")
+        return finish(_no_answer_response(lang, recovery.REASON_NO_EVIDENCE, intent), "no_retrieval")
+
+    # Step 4a: Evidence gate (app/answerability.py, v1.6). When even the best
+    # excerpt scores below the threshold, nothing retrieved is about the
+    # question: skip generation entirely. Same outcome as "nothing retrieved".
+    gate_ok, top_score = answerability.passes_gate(combined)
+    tr["evidence_gate"] = {"top_score": top_score, "threshold": answerability.EVIDENCE_GATE_MIN_SCORE,
+                           "passed": gate_ok}
+    progress.emit("evidence_gate", "done" if gate_ok else "failed", passed=gate_ok, top_score=top_score,
+                  threshold=answerability.EVIDENCE_GATE_MIN_SCORE)
+    if not gate_ok:
+        print(f"🚧 [Gate] best rerank score {top_score:.3f} < {answerability.EVIDENCE_GATE_MIN_SCORE}: "
+              "no excerpt is about the question; not generating")
+        return finish(_no_answer_response(lang, recovery.REASON_NO_EVIDENCE, intent), "no_retrieval")
 
     # Step 4b: Label the query from the retrieved evidence — which
     # corpus categories (year folders / faq) the chunks came from.
@@ -356,14 +566,17 @@ def _run_query(body: QueryRequest, tr: Dict[str, Any], started: float) -> Tuple[
     n_attempts = len(rag.attempts)
 
     if rag.outcome == OUTCOME_ERROR:
-        response = _no_answer_response(lang)
+        response = _no_answer_response(lang, recovery.REASON_ERROR, intent)
         finish(response, "error", n_attempts)
-        raise HTTPException(status_code=500, detail=rag.error or "Model call failed.")
+        raise ModelCallFailed(rag.error or "Model call failed.", response)
 
     if rag.outcome != OUTCOME_VERIFIED:
-        # generator_no_answer or verification_failed: canned refusal, and
-        # the sources are NOT shown as if they supported an answer.
-        return finish(_no_answer_response(lang), rag.outcome, n_attempts)
+        # generator_no_answer or verification_failed: conversational guidance
+        # (app/recovery.py), never the unverified draft. The retrieved
+        # documents are named only as "closest documents", not as sources
+        # supporting an answer.
+        reason = recovery.REASON_UNVERIFIED if rag.outcome == "verification_failed" else recovery.REASON_NO_EVIDENCE
+        return finish(_no_answer_response(lang, reason, intent, combined), rag.outcome, n_attempts)
 
     # Same numbering as the context, so a [n] in the answer = sources[n-1].
     sources = source_labels(combined)
@@ -396,6 +609,8 @@ def query_endpoint(body: QueryRequest):
     try:
         response, _trace = run_query(body)
         return response
+    except ModelCallFailed as e:  # already traced; show "please try again", not a server error
+        return e.response
     except HTTPException:
         raise
     except Exception as e:  # already traced by run_query()

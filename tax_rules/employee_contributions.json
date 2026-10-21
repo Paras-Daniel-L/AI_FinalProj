@@ -1,0 +1,63 @@
+{
+  "rule_id": "ph-employee-mandatory-contributions",
+  "tax_type": "employee_contributions",
+  "method": "employee_contributions",
+  "jurisdiction": "PH",
+  "document_type": "contribution_schedule",
+  "computation_related": true,
+  "name": {
+    "english": "Employee shares of SSS, PhilHealth and Pag-IBIG contributions",
+    "filipino": "Bahagi ng empleyado sa kontribusyon sa SSS, PhilHealth at Pag-IBIG",
+    "taglish": "Employee share sa SSS, PhilHealth at Pag-IBIG contributions"
+  },
+  "applies_to": "Private-sector employees. Used only to EXCLUDE the employee's mandatory contributions from taxable compensation (NIRC Sec. 32(B)(7)(f)). Not a tax.",
+  "inputs": {
+    "tax_year": {"type": "year", "required": true},
+    "monthly_compensation": {"type": "amount", "required": true, "min": "0"}
+  },
+  "kb_references": [],
+  "versions": [
+    {
+      "version_id": "contrib-2025-2026",
+      "tax_year_from": 2025,
+      "tax_year_to": 2026,
+      "label": {
+        "english": "contribution schedules in force in 2025 and 2026",
+        "filipino": "mga contribution schedule na umiiral noong 2025 at 2026",
+        "taglish": "contribution schedules na in force for 2025 at 2026"
+      },
+      "legal_basis": "SSS: RA 11199 and SSS Circular No. 2024-006 (effective January 2025). PhilHealth: RA 11223 Sec. 10, PhilHealth Circular No. 2020-0005 (Rev. 1), Advisories PA2025-0002 and PA2026-0042. Pag-IBIG: HDMF Circular No. 460 (effective February 2024).",
+      "sss": {
+        "employee_rate": "0.05",
+        "msc_min": "5000",
+        "msc_max": "35000",
+        "msc_step": "500"
+      },
+      "philhealth": {
+        "premium_rate": "0.05",
+        "employee_share": "0.5",
+        "income_floor": "10000",
+        "income_ceiling": "100000"
+      },
+      "pagibig": {
+        "employee_rate": "0.02",
+        "max_fund_salary": "10000",
+        "auto_min_monthly_compensation": "1500"
+      },
+      "sources": [
+        {"title": "SSS Circular No. 2024-006, Schedule of SSS Contributions for All Business Employers and Employees Effective January 2025 (SSS circulars index)", "url": "https://www.sss.gov.ph/?p=4778"},
+        {"title": "KPMG Flash Alert 2025-026: SSS contribution rate 15% (employer 10%, employee 5%); MSC PHP 5,000 ('below 5,250') to PHP 35,000 ('34,750 - over')", "url": "https://assets.kpmg.com/content/dam/kpmgsites/xx/pdf/2025/01/fa25-026.pdf.coredownload.inline.pdf"},
+        {"title": "PhilHealth Advisory No. 2025-0002: premium rate 5.0%, income floor P10,000, ceiling P100,000", "url": "https://www.philhealth.gov.ph/advisories/2025/PA2025-0002.pdf"},
+        {"title": "PhilHealth Advisory No. 2026-0042 (signed July 21, 2026): premium rate 5.0%", "url": "https://www.philhealth.gov.ph/advisories/2026/PA2026-0042.pdf"},
+        {"title": "PhilHealth Circular No. 2020-0005 (Rev. 1): premium shared equally by employer and employee; based on monthly basic salary", "url": "https://www.philhealth.gov.ph/circulars/2020/TS_circ2020-0005.pdf"},
+        {"title": "RA 11223 (Universal Health Care Act), Sec. 10: 5% from 2024, floor P10,000, ceiling P100,000", "url": "https://lawphil.net/statutes/repacts/ra2019/ra_11223_2019.html"},
+        {"title": "OCA Circular No. 25-2024 implementing HDMF Circular No. 460: 2% of Fund Salary, maximum Fund Salary P10,000, personal share P200, effective February 2024", "url": "https://oca.judiciary.gov.ph/wp-content/uploads/2024/02/OCA-Circular-No.-25-2024.pdf"}
+      ],
+      "verification": {
+        "status": "verified",
+        "checked_on": "2026-10-06",
+        "notes": "SSS: the circular PDF on sss.gov.ph could not be retrieved; the schedule's figures are confirmed by two independent summaries of Circular 2024-006 (KPMG, Grant Thornton), and the SSS circulars index lists no later schedule, so 2024-006 still applies in 2026. MSC brackets are P500 wide and centred on each MSC (e.g. P5,250-P5,749.99 -> P5,500), with everything below P5,250 at P5,000 and P34,750 and over at P35,000; the employee share is 5% of the MSC. PhilHealth premiums are computed on monthly BASIC salary, so pay that includes allowances overstates PhilHealth slightly. Pag-IBIG: the reduced 1% rate for monthly compensation of P1,500 and below was not confirmed from an official source, so contributions are not auto-computed at or below P1,500 a month (the user is asked for them instead). Extend tax_year_to only after checking each agency for a newer circular."
+      }
+    }
+  ]
+}

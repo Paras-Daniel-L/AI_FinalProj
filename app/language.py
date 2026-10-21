@@ -101,3 +101,17 @@ def detect_language(text: str) -> LanguageResult:
         return LanguageResult("filipino", fil_hits, eng_hits, "Filipino")
 
     return LanguageResult("english", fil_hits, eng_hits, "English")
+
+
+_DISPLAY_NAMES = {
+    "english": "English",
+    "filipino": "Filipino",
+    "taglish": "Taglish (Filipino-English code-switched)",
+}
+
+
+def language_from_label(label: str) -> LanguageResult:
+    """A LanguageResult for a label carried over from an earlier turn (a bare
+    "800,000" reply in a computation has no language markers of its own)."""
+    label = label if label in _DISPLAY_NAMES else "english"
+    return LanguageResult(label, 0, 0, _DISPLAY_NAMES[label])
